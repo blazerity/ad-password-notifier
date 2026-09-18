@@ -118,16 +118,10 @@ class Mailer:
         self.send_html(recipients, "Ошибка выполнения скрипта уведомлений", body)
 
     def _send(self, message: MIMEMultipart, recipients: list[str]) -> None:
-        if self._smtp.use_tls:
-            context = ssl.create_default_context()
-            with smtplib.SMTP_SSL(self._smtp.host, self._smtp.port, context=context) as client:
-                self._authenticate(client)
-                client.sendmail(self._smtp.from_address, recipients, message.as_string())
-            return
-
+        # Как в equipment-csv-mailer: SMTP + опциональный STARTTLS, затем AUTH.
         with smtplib.SMTP(self._smtp.host, self._smtp.port, timeout=30) as client:
             client.ehlo()
-            if self._smtp.use_starttls:
+            if self._smtp.use_tls or self._smtp.use_starttls:
                 context = ssl.create_default_context()
                 client.starttls(context=context)
                 client.ehlo()
@@ -135,5 +129,5 @@ class Mailer:
             client.sendmail(self._smtp.from_address, recipients, message.as_string())
 
     def _authenticate(self, client: smtplib.SMTP) -> None:
-        if self._smtp.username and self._smtp.password:
-            client.login(self._smtp.username, self._smtp.password)
+        if self._smtp.username:
+            client.login(self._smtp.username, self._smtp.password or "")

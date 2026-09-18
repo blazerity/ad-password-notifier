@@ -55,9 +55,11 @@ copy config.example.ini config.ini
 
 ```
 AD_SERVICE_PASSWORD=...
-SMTP_USER=...          # если релей требует вход
-SMTP_PASSWORD=...
+SMTP_USER=...          # необязательно: иначе [smtp] from_address
+SMTP_PASSWORD=...      # необязательно: иначе AD_SERVICE_PASSWORD
 ```
+
+Exchange на порту 587 требует SMTP AUTH. Если `SMTP_USER`/`SMTP_PASSWORD` не заданы, вход идёт той же сервисной учёткой, что и LDAP (`from_address` + `AD_SERVICE_PASSWORD`). `use_tls` / `use_starttls` включают STARTTLS (как в equipment-csv-mailer), не SMTPS на 465.
 
 ## Правила писем пользователю
 

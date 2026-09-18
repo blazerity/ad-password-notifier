@@ -61,6 +61,21 @@ def test_load_ini_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
     assert cfg.logging.max_log_age == 14
     assert cfg.logging.use_emoji is False
     assert cfg.smtp.use_tls is False
+    assert cfg.smtp.username == "noreply@domain.local"
+    assert cfg.smtp.password == "secret"
+
+
+def test_smtp_env_overrides_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ini_path = tmp_path / "config.ini"
+    env_path = tmp_path / ".env"
+    ini_path.write_text(INI, encoding="utf-8")
+    monkeypatch.setenv("AD_SERVICE_PASSWORD", "secret")
+    monkeypatch.setenv("SMTP_USER", "mailbox@domain.local")
+    monkeypatch.setenv("SMTP_PASSWORD", "smtp-secret")
+
+    cfg = load_config(ini_path, env_path)
+    assert cfg.smtp.username == "mailbox@domain.local"
+    assert cfg.smtp.password == "smtp-secret"
 
 
 def test_load_ini_requires_password(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

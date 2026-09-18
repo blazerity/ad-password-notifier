@@ -144,8 +144,9 @@ def load_config(config_path: Path | None = None, env_path: Path | None = None) -
     if daily_threshold > first_warning:
         raise ConfigError("daily_warning_threshold не может быть больше first_warning_days")
 
-    smtp_user = os.getenv("SMTP_USER", "").strip() or None
-    smtp_password = os.getenv("SMTP_PASSWORD", "").strip() or None
+    from_address = _require(smtp_raw, "from_address", "smtp")
+    smtp_user = os.getenv("SMTP_USER", "").strip() or from_address
+    smtp_password = os.getenv("SMTP_PASSWORD", "").strip() or password
 
     return AppConfig(
         ad=AdConfig(
@@ -168,7 +169,7 @@ def load_config(config_path: Path | None = None, env_path: Path | None = None) -
             port=int(_require(smtp_raw, "port", "smtp")),
             use_tls=smtp_raw.getboolean("use_tls", fallback=False),
             use_starttls=smtp_raw.getboolean("use_starttls", fallback=False),
-            from_address=_require(smtp_raw, "from_address", "smtp"),
+            from_address=from_address,
             username=smtp_user,
             password=smtp_password,
         ),
