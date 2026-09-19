@@ -1,22 +1,22 @@
 # Уведомления об истечении паролей AD
 
-Консольное приложение на Python 3.11+ для Windows: ежедневная проверка срока паролей в локальном Active Directory, HTML-письма пользователям и сводный отчёт администраторам.
+Приложение на Python 3.11+ для Windows Server: проверка срока паролей в локальном Active Directory, HTML-письма пользователям, сводный отчёт администраторам и лёгкий web-интерфейс.
 
-Запускается по расписанию через Планировщик заданий Windows, не как служба. Политики Fine-Grained Password Policies **не учитываются**: используется единый `max_pwd_age_days` из `config.ini` (в домене — 180 дней).
+Может работать как консольный скрипт (Планировщик заданий) или как **служба Windows** с встроенным планировщиком и UI. Политики Fine-Grained Password Policies **не учитываются**: используется единый `max_pwd_age_days` из `config.ini`.
 
 ## Возможности
 
-- Выборка активных пользователей по LDAP (`ldap3` и `pycryptodome` для NTLM/MD4 на Python 3.12+; без pywin32 и модуля Active Directory в PowerShell).
+- Выборка активных пользователей по LDAP (`ldap3` + NTLM).
 - Расчёт даты истечения: `pwdLastSet + max_pwd_age_days`.
-- Первое письмо при пороге 5 дней, ежедневные письма начиная с 3 дней и при просрочке.
-- История в CSV, чтобы не дублировать письма и фиксировать смену пароля (`pwdLastSet`).
+- Первое письмо при пороге 5 дней, ежедневные — с 3 дней и при просрочке.
+- История в CSV, чтобы не дублировать письма и фиксировать смену пароля.
 - Сводный HTML-отчёт: истекает скоро / просрочено / пароль сменили.
-- Алерт администраторам, если недоступны AD или SMTP.
-- Тестовый прогон без отправки почты (меню в консоли или `--dry-run`).
+- Web UI: дашборд, настройки INI, расписание, пауза рассылки, ручное напоминание выбранным.
+- Режим службы: один процесс = HTTP + APScheduler (установка через NSSM).
 
 ## Установка
 
-На Windows 10 / Windows Server 2019:
+На Windows Server 2019+:
 
 ```bat
 py -3.11 -m venv .venv
@@ -36,8 +36,8 @@ copy config.example.ini config.ini
 2. Оставьте его в группе Domain Users.
 3. На нужных OU выдайте чтение свойств и списка объектов user.
 4. Если контроллер требует LDAP signing или LDAPS, в `[ad]` укажите `server = ldaps://dc01.domain.local`.
-5. Учётки с флагом «пароль не истекает» и без атрибута `mail` пропускаются (в лог пишется предупреждение).
-6. `pwdLastSet = 0` (смена при следующем входе) не считается истечением через 180 дней: в отчёте будет статус «Смена при следующем входе», письмо пользователю не уходит.
+5. Учётки с флагом «пароль не истекает» и без атрибута `mail` пропускаются.
+6. `pwdLastSet = 0` — в отчёте «Смена при следующем входе», письмо пользователю не уходит.
 
 Пароль сервисной учётки храните только в `.env` (`AD_SERVICE_PASSWORD`).
 
@@ -45,75 +45,71 @@ copy config.example.ini config.ini
 
 `config.ini` (копия с `config.example.ini`):
 
-- `[ad]` — сервер, домен, учётка, `search_base`, `excluded_ou` (несколько DN через `;`), `max_pwd_age_days`
-- `[notification]` — пороги 5 и 3 дня, путь к CSV, ссылка на инструкцию
-- `[smtp]` — релей Exchange или локальный SMTP, не Outlook
+- `[ad]` — сервер, домен, учётка, `search_base`, `excluded_ou` (DN через `;`), `max_pwd_age_days`
+- `[notification]` — пороги, путь к CSV, ссылка на инструкцию
+- `[smtp]` — релей Exchange или локальный SMTP
 - `[admins]` — адреса отчёта через запятую
-- `[logging]` — каталог и уровни для `ylogger.py`
+- `[logging]` — каталог и уровни
+- `[schedule]` — `enabled`, `cron` (`0 8 * * *`), `pause_user_mail_until`
+- `[web]` — `host`, `port` (по умолчанию `127.0.0.1:8787`)
 
 `.env`:
 
 ```
 AD_SERVICE_PASSWORD=...
-SMTP_USER=...          # необязательно: иначе [smtp] from_address
-SMTP_PASSWORD=...      # необязательно: иначе AD_SERVICE_PASSWORD
+SMTP_USER=...          # необязательно
+SMTP_PASSWORD=...      # необязательно
+WEB_USER=admin
+WEB_PASSWORD=...       # Basic Auth для UI; без пароля auth выключен
 ```
 
-Exchange на порту 587 требует SMTP AUTH. Если `SMTP_USER`/`SMTP_PASSWORD` не заданы, вход идёт той же сервисной учёткой, что и LDAP (`from_address` + `AD_SERVICE_PASSWORD`). `use_tls` / `use_starttls` включают STARTTLS (как в equipment-csv-mailer), не SMTPS на 465.
+## Запуск (консоль)
 
-## Правила писем пользователю
-
-| Состояние | Действие |
-| --- | --- |
-| Осталось не больше 5 дней, в этом цикле ещё не писали | одно первое письмо |
-| Осталось 3 дня и меньше либо пароль уже просрочен | письмо каждый день |
-| За сегодня запись уже есть | повтор не отправляется |
-| `pwdLastSet` изменился | цикл закрывается статусом `resolved` |
-
-История: `data/notification_history.csv`.
-
-## Запуск
-
-Из корня проекта (рядом должны быть `config.ini` и `templates/`):
+Из корня проекта:
 
 ```bat
 .venv\Scripts\python.exe main.py
+.venv\Scripts\python.exe main.py --dry-run
+.venv\Scripts\python.exe main.py --send
 ```
 
-В интерактивной консоли:
+## Служба Windows + web UI
 
-```
-1) Боевой запуск — LDAP и отправка писем
-2) Тестовый прогон — LDAP, без SMTP и без записи истории
-0) Выход
-```
-
-По умолчанию выбран пункт 2.
-
-Без меню:
+Рекомендуемый режим на сервере:
 
 ```bat
-python main.py --dry-run
-python main.py --send
+.venv\Scripts\python.exe main.py --serve
 ```
 
-Тестовый прогон ходит в AD, пишет HTML в `data/previews/` и не трогает SMTP и CSV.
-
-Логи: `logs/ad_password_notifier_ГГГГММДД_ЧЧММСС.log` (файлы старше `max_log_age` дней удаляются).
-
-## Планировщик заданий Windows
-
-Для автозапуска укажите `--send`:
+Или установка службы через [NSSM](https://nssm.cc/download) (от администратора):
 
 ```bat
-schtasks /create /tn "AD Password Notifier" /tr "C:\path\to\python.exe C:\path\to\main.py --send" /sc daily /st 08:00 /ru SYSTEM
+scripts\install_service.bat
 ```
 
-Рекомендации:
+Удаление: `scripts\uninstall_service.bat`.
 
-- Рабочий каталог задачи — корень проекта, иначе не найдутся INI и шаблоны.
-- Учётка задачи должна уметь читать LDAP. SYSTEM часто не подходит, если у него нет доступа к контроллеру домена.
-- Код выхода `1` — ошибка конфигурации, AD или отправки отчёта.
+После старта откройте `http://127.0.0.1:8787/` (или host/port из `[web]`).
+
+В UI:
+
+1. **Отчёт** — состояние учёток, поиск, «Запустить сейчас» / тестовый прогон.
+2. **Настройки** — всё из `config.ini`, пароли в `.env`, проверка LDAP/SMTP.
+3. **Пауза рассылки** — не слать письма пользователям до указанной даты.
+4. **Напомнить выбранным** — принудительное письмо отмеченным учёткам.
+
+Учётку службы в `services.msc` → Log On задайте доменную с read LDAP (не SYSTEM, если нет доступа к DC).  
+Смена `host`/`port` web требует перезапуска службы; остальные настройки подхватываются после «Сохранить».
+
+## Планировщик заданий (альтернатива)
+
+Если служба не нужна:
+
+```bat
+schtasks /create /tn "AD Password Notifier" /tr "C:\path\to\.venv\Scripts\python.exe C:\path\to\main.py --send" /sc daily /st 08:00 /ru DOMAIN\svc_pwd_notifier
+```
+
+Рабочий каталог задачи — корень проекта.
 
 ## Тесты
 
@@ -126,15 +122,13 @@ schtasks /create /tn "AD Password Notifier" /tr "C:\path\to\python.exe C:\path\t
 ## Структура проекта
 
 ```
-main.py
-ylogger.py
-config.py
-config.example.ini
-.env.example
-ad_client.py
-mailer.py
-notification_tracker.py
-report_builder.py
-templates/
+main.py                 # CLI + пайплайн
+service_main.py         # --serve: web + scheduler
+scheduler_service.py
+report_store.py         # data/last_report.json
+config.py / config_writer.py
+web/                    # FastAPI UI
+scripts/                # install/uninstall NSSM
+templates/              # письма
 tests/
 ```

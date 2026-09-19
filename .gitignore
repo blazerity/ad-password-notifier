@@ -12,3 +12,6 @@ logs/*.log
 logs/*.log.*
 data/notification_history.csv
 data/previews/
+data/last_report.json
+data/last_run_status.json
+data/.run.lock
