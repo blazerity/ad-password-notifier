@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Отчёт — AD Password Notifier{% endblock %}
+{% block content %}
+
+<section class="panel">
+  <h1 class="section-title">Состояние учёток</h1>
+  <p class="hint">
+    {% if report %}
+      Отчёт за {{ report.report_date }} · обновлён {{ report.generated_at }} · источник {{ report.source }}
+    {% else %}
+      Отчёта ещё нет — запустите проверку или дождитесь расписания.
+    {% endif %}
+  </p>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="label">Скоро истечёт</div>
+      <div class="value">{{ report.counts.upcoming if report else "—" }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Просрочено</div>
+      <div class="value">{{ report.counts.overdue if report else "—" }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Сменили сегодня</div>
+      <div class="value">{{ report.counts.resolved if report else "—" }}</div>
+    </div>
+    <div class="stat">
+      <div class="label">Всего в выборке</div>
+      <div class="value">{{ report.counts.total if report else "—" }}</div>
+    </div>
+  </div>
+
+  {% if status %}
+  <p class="muted">
+    Последний прогон: {{ status.finished_at }} · код {{ status.exit_code }} ·
+    писем {{ status.sent_count }} · режим {{ status.mode }}
+    {% if status.error %} · <span style="color:var(--danger)">{{ status.error }}</span>{% endif %}
+  </p>
+  {% endif %}
+
+  <div class="actions-row">
+    <form method="post" action="/actions/run">
+      <button class="btn" type="submit">Запустить сейчас</button>
+    </form>
+    <form method="post" action="/actions/run">
+      <input type="hidden" name="dry_run" value="1">
+      <button class="btn secondary" type="submit">Тестовый прогон</button>
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <h2>Пауза рассылки пользователям</h2>
+  <p class="hint">Админ-отчёт уходит по расписанию; письма пользователям можно временно отключить.</p>
+  <form method="post" action="/actions/pause" class="toolbar">
+    <div class="field inline">
+      <label for="until">До даты (включительно)</label>
+      <input type="date" id="until" name="until" value="{{ config.schedule.pause_user_mail_until or '' }}">
+    </div>
+    <button class="btn secondary" type="submit">Включить паузу</button>
+    <button class="btn secondary" type="submit" name="clear" value="1">Снять паузу</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Список</h2>
+  <form method="get" class="toolbar">
+    <div class="field inline">
+      <label for="section">Секция</label>
+      <select id="section" name="section">
+        <option value="attention" {% if section == 'attention' %}selected{% endif %}>Требуют внимания</option>
+        <option value="upcoming" {% if section == 'upcoming' %}selected{% endif %}>Скоро</option>
+        <option value="overdue" {% if section == 'overdue' %}selected{% endif %}>Просрочено</option>
+        <option value="resolved" {% if section == 'resolved' %}selected{% endif %}>Сменили сегодня</option>
+        <option value="all" {% if section == 'all' %}selected{% endif %}>Все</option>
+      </select>
+    </div>
+    <div class="field inline" style="min-width:220px;flex:1">
+      <label for="q">Поиск</label>
+      <input type="search" id="q" name="q" value="{{ q }}" placeholder="ФИО, логин, email">
+    </div>
+    <button class="btn secondary" type="submit">Показать</button>
+  </form>
+
+  {% if rows %}
+  <form method="post" action="/actions/notify">
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>ФИО</th>
+          <th>Логин</th>
+          <th>Email</th>
+          <th>Статус</th>
+          <th>Дней</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            {% if row.status != 'resolved' and row.status != 'must_change' %}
+            <input type="checkbox" name="usernames" value="{{ row.username }}">
+            {% endif %}
+          </td>
+          <td>{{ row.full_name }}</td>
+          <td class="mono">{{ row.username }}</td>
+          <td>{{ row.email }}</td>
+          <td>
+            {% if row.status == 'overdue' or 'Просрочен' in row.status_text %}
+              <span class="badge danger">{{ row.status_text }}</span>
+            {% elif row.status == 'upcoming' or 'Осталось' in row.status_text %}
+              <span class="badge warn">{{ row.status_text }}</span>
+            {% elif row.status == 'resolved' %}
+              <span class="badge ok">{{ row.status_text }}</span>
+            {% else %}
+              <span class="badge">{{ row.status_text }}</span>
+            {% endif %}
+          </td>
+          <td>{{ row.days_left if row.days_left is not none else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="actions-row">
+      <button class="btn" type="submit">Напомнить выбранным</button>
+    </div>
+  </form>
+  {% else %}
+  <div class="empty">Нет строк для отображения.</div>
+  {% endif %}
+</section>
+
+{% endblock %}

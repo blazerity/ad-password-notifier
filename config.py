@@ -5,12 +5,15 @@ from __future__ import annotations
 import configparser
 import os
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 LOGGER_NAME = "ad_password_notifier"
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.ini"
+DEFAULT_ENV_PATH = PROJECT_ROOT / ".env"
 
 
 @dataclass(frozen=True)
@@ -68,6 +71,25 @@ class LoggingConfig:
 
 
 @dataclass(frozen=True)
+class ScheduleConfig:
+    """Расписание автопроверки и пауза пользовательских писем."""
+
+    enabled: bool
+    cron: str
+    pause_user_mail_until: date | None
+
+
+@dataclass(frozen=True)
+class WebConfig:
+    """Параметры встроенного web-интерфейса."""
+
+    host: str
+    port: int
+    username: str
+    password: str
+
+
+@dataclass(frozen=True)
 class AppConfig:
     """Полная конфигурация приложения."""
 
@@ -76,6 +98,8 @@ class AppConfig:
     smtp: SmtpConfig
     admins: AdminsConfig
     logging: LoggingConfig
+    schedule: ScheduleConfig
+    web: WebConfig
 
 
 class ConfigError(ValueError):
@@ -100,6 +124,25 @@ def _resolve_path(raw: str) -> Path:
     return path
 
 
+def _parse_optional_date(raw: str) -> date | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise ConfigError(f"Некорректная дата pause_user_mail_until: {raw!r}") from exc
+
+
+def is_user_mail_paused(config: AppConfig, today: date | None = None) -> bool:
+    """True, если пользовательские письма временно отключены."""
+    until = config.schedule.pause_user_mail_until
+    if until is None:
+        return False
+    current = today or date.today()
+    return current <= until
+
+
 def load_config(config_path: Path | None = None, env_path: Path | None = None) -> AppConfig:
     """Загрузить INI-конфиг и секреты из .env.
 
@@ -107,9 +150,9 @@ def load_config(config_path: Path | None = None, env_path: Path | None = None) -
         config_path: путь к config.ini (по умолчанию рядом с модулем).
         env_path: путь к .env (по умолчанию PROJECT_ROOT/.env).
     """
-    load_dotenv(env_path or (PROJECT_ROOT / ".env"))
+    load_dotenv(env_path or DEFAULT_ENV_PATH)
 
-    ini_path = config_path or (PROJECT_ROOT / "config.ini")
+    ini_path = config_path or DEFAULT_CONFIG_PATH
     if not ini_path.is_file():
         raise ConfigError(f"Файл конфигурации не найден: {ini_path}")
 
@@ -127,6 +170,8 @@ def load_config(config_path: Path | None = None, env_path: Path | None = None) -
     smtp_raw = parser["smtp"]
     admins_raw = parser["admins"]
     log_raw = parser["logging"]
+    schedule_raw = parser["schedule"] if parser.has_section("schedule") else None
+    web_raw = parser["web"] if parser.has_section("web") else None
 
     password = os.getenv("AD_SERVICE_PASSWORD", "").strip()
     if not password:
@@ -147,6 +192,25 @@ def load_config(config_path: Path | None = None, env_path: Path | None = None) -
     from_address = _require(smtp_raw, "from_address", "smtp")
     smtp_user = os.getenv("SMTP_USER", "").strip() or from_address
     smtp_password = os.getenv("SMTP_PASSWORD", "").strip() or password
+
+    cron = "0 8 * * *"
+    schedule_enabled = True
+    pause_until: date | None = None
+    if schedule_raw is not None:
+        cron = (schedule_raw.get("cron", fallback=cron) or cron).strip()
+        schedule_enabled = schedule_raw.getboolean("enabled", fallback=True)
+        pause_until = _parse_optional_date(schedule_raw.get("pause_user_mail_until", fallback=""))
+
+    web_host = "127.0.0.1"
+    web_port = 8787
+    if web_raw is not None:
+        web_host = (web_raw.get("host", fallback=web_host) or web_host).strip()
+        web_port = int(web_raw.get("port", fallback=str(web_port)) or web_port)
+    if web_port <= 0 or web_port > 65535:
+        raise ConfigError("[web] port должен быть в диапазоне 1..65535")
+
+    web_user = os.getenv("WEB_USER", "").strip() or "admin"
+    web_password = os.getenv("WEB_PASSWORD", "").strip()
 
     return AppConfig(
         ad=AdConfig(
@@ -180,5 +244,16 @@ def load_config(config_path: Path | None = None, env_path: Path | None = None) -
             console_level=(log_raw.get("console_level", fallback="INFO") or "INFO").upper(),
             max_log_age=int(log_raw.get("max_log_age", fallback="30") or 30),
             use_emoji=log_raw.getboolean("use_emoji", fallback=True),
+        ),
+        schedule=ScheduleConfig(
+            enabled=schedule_enabled,
+            cron=cron,
+            pause_user_mail_until=pause_until,
+        ),
+        web=WebConfig(
+            host=web_host,
+            port=web_port,
+            username=web_user,
+            password=web_password,
         ),
     )

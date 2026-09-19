@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Настройки — AD Password Notifier{% endblock %}
+{% block content %}
+
+<h1 class="section-title">Настройки</h1>
+<p class="hint">Значения пишутся в config.ini. Пароли — только в .env (оставьте поле пустым, чтобы не менять).</p>
+
+<form method="post" action="/settings">
+  <section class="panel">
+    <h2>Active Directory</h2>
+    <div class="row-2">
+      <div class="field">
+        <label for="ad_server">Сервер</label>
+        <input type="text" id="ad_server" name="ad_server" value="{{ config.ad.server }}" required>
+      </div>
+      <div class="field">
+        <label for="ad_domain">Домен (NetBIOS)</label>
+        <input type="text" id="ad_domain" name="ad_domain" value="{{ config.ad.domain }}" required>
+      </div>
+      <div class="field">
+        <label for="ad_service_user">Учётная запись</label>
+        <input type="text" id="ad_service_user" name="ad_service_user" value="{{ config.ad.service_user }}" required>
+      </div>
+      <div class="field">
+        <label for="ad_service_password">Пароль AD (AD_SERVICE_PASSWORD)</label>
+        <input type="password" id="ad_service_password" name="ad_service_password" placeholder="не менять" autocomplete="new-password">
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <label for="ad_search_base">Search base (OU)</label>
+        <input type="text" id="ad_search_base" name="ad_search_base" value="{{ config.ad.search_base }}" required>
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <label for="ad_excluded_ou">Исключённые OU (через ;)</label>
+        <input type="text" id="ad_excluded_ou" name="ad_excluded_ou" value="{{ config.ad.excluded_ou | join('; ') }}">
+      </div>
+      <div class="field">
+        <label for="ad_max_pwd_age_days">max_pwd_age_days</label>
+        <input type="number" id="ad_max_pwd_age_days" name="ad_max_pwd_age_days" value="{{ config.ad.max_pwd_age_days }}" min="1" required>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Уведомления</h2>
+    <div class="row-2">
+      <div class="field">
+        <label for="first_warning_days">Первое предупреждение (дней)</label>
+        <input type="number" id="first_warning_days" name="first_warning_days" value="{{ config.notification.first_warning_days }}" min="1" required>
+      </div>
+      <div class="field">
+        <label for="daily_warning_threshold">Ежедневные письма с (дней)</label>
+        <input type="number" id="daily_warning_threshold" name="daily_warning_threshold" value="{{ config.notification.daily_warning_threshold }}" min="1" required>
+      </div>
+      <div class="field">
+        <label for="history_csv">CSV истории</label>
+        <input type="text" id="history_csv" name="history_csv" value="{{ history_csv_display }}">
+      </div>
+      <div class="field">
+        <label for="instructions_url">Ссылка на инструкцию</label>
+        <input type="text" id="instructions_url" name="instructions_url" value="{{ config.notification.instructions_url }}">
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Расписание и пауза</h2>
+    <div class="checkbox-row">
+      <input type="checkbox" id="schedule_enabled" name="schedule_enabled" value="1" {% if config.schedule.enabled %}checked{% endif %}>
+      <label for="schedule_enabled">Автопроверка включена</label>
+    </div>
+    <div class="row-2">
+      <div class="field">
+        <label for="schedule_cron">Cron (min hour dom month dow)</label>
+        <input type="text" id="schedule_cron" name="schedule_cron" value="{{ config.schedule.cron }}" class="mono">
+      </div>
+      <div class="field">
+        <label for="pause_user_mail_until">Пауза писем до</label>
+        <input type="date" id="pause_user_mail_until" name="pause_user_mail_until" value="{{ config.schedule.pause_user_mail_until or '' }}">
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>SMTP</h2>
+    <div class="row-2">
+      <div class="field">
+        <label for="smtp_host">Хост</label>
+        <input type="text" id="smtp_host" name="smtp_host" value="{{ config.smtp.host }}" required>
+      </div>
+      <div class="field">
+        <label for="smtp_port">Порт</label>
+        <input type="number" id="smtp_port" name="smtp_port" value="{{ config.smtp.port }}" required>
+      </div>
+      <div class="field">
+        <label for="smtp_from_address">From</label>
+        <input type="text" id="smtp_from_address" name="smtp_from_address" value="{{ config.smtp.from_address }}" required>
+      </div>
+      <div class="field">
+        <label for="smtp_user">SMTP_USER (.env)</label>
+        <input type="text" id="smtp_user" name="smtp_user" placeholder="не менять / пусто = from_address">
+      </div>
+      <div class="field">
+        <label for="smtp_password">SMTP_PASSWORD (.env)</label>
+        <input type="password" id="smtp_password" name="smtp_password" placeholder="не менять" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="smtp_use_tls" name="smtp_use_tls" value="1" {% if config.smtp.use_tls %}checked{% endif %}>
+      <label for="smtp_use_tls">use_tls</label>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="smtp_use_starttls" name="smtp_use_starttls" value="1" {% if config.smtp.use_starttls %}checked{% endif %}>
+      <label for="smtp_use_starttls">use_starttls</label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Администраторы и логирование</h2>
+    <div class="field">
+      <label for="admins_recipients">Получатели отчёта (через запятую)</label>
+      <input type="text" id="admins_recipients" name="admins_recipients" value="{{ config.admins.recipients | join(', ') }}" required>
+    </div>
+    <div class="row-2">
+      <div class="field">
+        <label for="log_dir">Каталог логов</label>
+        <input type="text" id="log_dir" name="log_dir" value="{{ log_dir_display }}">
+      </div>
+      <div class="field">
+        <label for="max_log_age">Хранить логи (дней)</label>
+        <input type="number" id="max_log_age" name="max_log_age" value="{{ config.logging.max_log_age }}">
+      </div>
+      <div class="field">
+        <label for="file_level">file_level</label>
+        <input type="text" id="file_level" name="file_level" value="{{ config.logging.file_level }}">
+      </div>
+      <div class="field">
+        <label for="console_level">console_level</label>
+        <input type="text" id="console_level" name="console_level" value="{{ config.logging.console_level }}">
+      </div>
+    </div>
+    <div class="checkbox-row">
+      <input type="checkbox" id="use_emoji" name="use_emoji" value="1" {% if config.logging.use_emoji %}checked{% endif %}>
+      <label for="use_emoji">use_emoji</label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Web UI</h2>
+    <div class="row-2">
+      <div class="field">
+        <label for="web_host">Host (нужен рестарт службы)</label>
+        <input type="text" id="web_host" name="web_host" value="{{ config.web.host }}">
+      </div>
+      <div class="field">
+        <label for="web_port">Port (нужен рестарт службы)</label>
+        <input type="number" id="web_port" name="web_port" value="{{ config.web.port }}">
+      </div>
+      <div class="field">
+        <label for="web_user">WEB_USER</label>
+        <input type="text" id="web_user" name="web_user" value="{{ config.web.username }}" placeholder="admin">
+      </div>
+      <div class="field">
+        <label for="web_password">WEB_PASSWORD</label>
+        <input type="password" id="web_password" name="web_password" placeholder="не менять" autocomplete="new-password">
+      </div>
+    </div>
+  </section>
+
+  <div class="actions-row">
+    <button class="btn" type="submit">Сохранить</button>
+  </div>
+</form>
+
+<section class="panel">
+  <h2>Проверки связи</h2>
+  <div class="actions-row">
+    <form method="post" action="/actions/test-ad">
+      <button class="btn secondary" type="submit">Проверить LDAP</button>
+    </form>
+    <form method="post" action="/actions/test-smtp">
+      <button class="btn secondary" type="submit">Проверить SMTP</button>
+    </form>
+  </div>
+</section>
+
+{% endblock %}
