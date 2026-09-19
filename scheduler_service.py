@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timezone as dt_timezone
 from typing import Callable
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -12,6 +13,16 @@ from config import AppConfig
 from main import run_pipeline
 
 logger = logging.getLogger(__name__)
+
+
+def _local_timezone():
+    """Локальная TZ без строки 'local' (zoneinfo её не понимает)."""
+    try:
+        from tzlocal import get_localzone
+
+        return get_localzone()
+    except Exception:  # noqa: BLE001
+        return dt_timezone.utc
 
 
 def _parse_cron(cron: str) -> CronTrigger:
@@ -34,7 +45,7 @@ class AppScheduler:
 
     def __init__(self, get_config: Callable[[], AppConfig]) -> None:
         self._get_config = get_config
-        self._scheduler = BackgroundScheduler(timezone="local")
+        self._scheduler = BackgroundScheduler(timezone=_local_timezone())
         self._job_id = "daily_password_check"
 
     def start(self) -> None:
