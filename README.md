@@ -4,6 +4,8 @@
 
 Может работать как консольный скрипт (Планировщик заданий) или как **служба Windows** с встроенным планировщиком и UI. Политики Fine-Grained Password Policies **не учитываются**: используется единый `max_pwd_age_days` из `config.ini`.
 
+**Развёртывание на Windows Server:** пошаговая инструкция — [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ## Возможности
 
 - Выборка активных пользователей по LDAP (`ldap3` + NTLM).
@@ -14,9 +16,9 @@
 - Web UI: дашборд, настройки INI, расписание, пауза рассылки, ручное напоминание выбранным.
 - Режим службы: один процесс = HTTP + APScheduler (установка через NSSM).
 
-## Установка
+## Быстрый старт
 
-На Windows Server 2019+:
+На Windows Server 2019+ (кратко; детали в [DEPLOYMENT.md](DEPLOYMENT.md)):
 
 ```bat
 py -3.11 -m venv .venv
@@ -26,7 +28,16 @@ copy .env.example .env
 copy config.example.ini config.ini
 ```
 
-Отредактируйте `.env` и `config.ini`. Файлы с секретами и боевым конфигом в git не попадают.
+Отредактируйте `.env` и `config.ini`. Затем проверка и служба:
+
+```bat
+.venv\Scripts\python.exe main.py --dry-run
+scripts\install_service.bat
+```
+
+Web UI: http://127.0.0.1:8787/ (`WEB_USER` / `WEB_PASSWORD` из `.env`).
+
+Файлы с секретами и боевым конфигом в git не попадают.
 
 ## Сервисная учётная запись AD
 
@@ -71,17 +82,14 @@ WEB_PASSWORD=...       # Basic Auth для UI; без пароля auth выкл
 .venv\Scripts\python.exe main.py
 .venv\Scripts\python.exe main.py --dry-run
 .venv\Scripts\python.exe main.py --send
+.venv\Scripts\python.exe main.py --serve
 ```
 
 ## Служба Windows + web UI
 
-Рекомендуемый режим на сервере:
+Полный чеклист: [DEPLOYMENT.md](DEPLOYMENT.md).
 
-```bat
-.venv\Scripts\python.exe main.py --serve
-```
-
-Или установка службы через [NSSM](https://nssm.cc/download) (от администратора):
+Кратко:
 
 ```bat
 scripts\install_service.bat
@@ -89,7 +97,7 @@ scripts\install_service.bat
 
 Удаление: `scripts\uninstall_service.bat`.
 
-После старта откройте `http://127.0.0.1:8787/` (или host/port из `[web]`).
+После старта: http://127.0.0.1:8787/
 
 В UI:
 
@@ -103,13 +111,13 @@ scripts\install_service.bat
 
 ## Планировщик заданий (альтернатива)
 
-Если служба не нужна:
+Если служба и UI не нужны:
 
 ```bat
 schtasks /create /tn "AD Password Notifier" /tr "C:\path\to\.venv\Scripts\python.exe C:\path\to\main.py --send" /sc daily /st 08:00 /ru DOMAIN\svc_pwd_notifier
 ```
 
-Рабочий каталог задачи — корень проекта.
+Рабочий каталог задачи — корень проекта. Подробности — в [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Тесты
 
@@ -122,6 +130,7 @@ schtasks /create /tn "AD Password Notifier" /tr "C:\path\to\.venv\Scripts\python
 ## Структура проекта
 
 ```
+DEPLOYMENT.md           # развёртывание на Windows Server
 main.py                 # CLI + пайплайн
 service_main.py         # --serve: web + scheduler
 scheduler_service.py
