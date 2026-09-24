@@ -3,6 +3,8 @@
 Пошаговая инструкция для Windows Server 2019 / 2022 (подойдёт и Windows 10/11 для теста).  
 Цель: служба **AD Password Notifier** с web UI и ежедневной проверкой паролей AD.
 
+Для **Debian 12** см. [DEPLOYMENT_DEBIAN.md](DEPLOYMENT_DEBIAN.md) (есть one-line установка из git).
+
 Рекомендуемый путь установки: `C:\Apps\ad-password-notifier`.
 
 ---
