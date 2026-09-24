@@ -1,10 +1,13 @@
 # Уведомления об истечении паролей AD
 
-Приложение на Python 3.11+ для Windows Server: проверка срока паролей в локальном Active Directory, HTML-письма пользователям, сводный отчёт администраторам и лёгкий web-интерфейс.
+Приложение на Python 3.11+ для **Windows Server** и **Debian 12**: проверка срока паролей в локальном Active Directory, HTML-письма пользователям, сводный отчёт администраторам и лёгкий web-интерфейс.
 
-Может работать как консольный скрипт (Планировщик заданий) или как **служба Windows** с встроенным планировщиком и UI. Политики Fine-Grained Password Policies **не учитываются**: используется единый `max_pwd_age_days` из `config.ini`.
+Может работать как консольный скрипт (Планировщик заданий / cron) или как **служба** (Windows NSSM / systemd) с встроенным планировщиком и UI. Политики Fine-Grained Password Policies **не учитываются**: используется единый `max_pwd_age_days` из `config.ini`.
 
-**Развёртывание на Windows Server:** пошаговая инструкция — [DEPLOYMENT.md](DEPLOYMENT.md).
+**Развёртывание:**
+
+- Windows Server — [DEPLOYMENT.md](DEPLOYMENT.md)
+- Debian 12 — [DEPLOYMENT_DEBIAN.md](DEPLOYMENT_DEBIAN.md)
 
 ## Возможности
 
@@ -14,9 +17,29 @@
 - История в CSV, чтобы не дублировать письма и фиксировать смену пароля.
 - Сводный HTML-отчёт: истекает скоро / просрочено / пароль сменили.
 - Web UI: дашборд, настройки INI, расписание, пауза рассылки, ручное напоминание выбранным.
-- Режим службы: один процесс = HTTP + APScheduler (установка через NSSM).
+- Режим службы: один процесс = HTTP + APScheduler (NSSM на Windows, systemd на Debian).
 
-## Быстрый старт
+## Быстрый старт: Debian 12 (one-line)
+
+На сервере с Debian 12:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/blazerity/ad-password-notifier/cursor/debian-12-deployment-f1d7/scripts/install_debian.sh | sudo bash
+```
+
+Затем отредактируйте `/opt/ad-password-notifier/config.ini` и `.env`, проверьте и запустите:
+
+```bash
+sudo -u ad-pwd-notifier /opt/ad-password-notifier/.venv/bin/python /opt/ad-password-notifier/main.py --dry-run
+sudo systemctl enable --now ad-password-notifier
+```
+
+Web UI: http://127.0.0.1:8787/  
+Подробности и ручная установка — [DEPLOYMENT_DEBIAN.md](DEPLOYMENT_DEBIAN.md).
+
+> Репозиторий должен быть **доступен без авторизации** (публичный), иначе `curl` к raw-файлу не сработает. Альтернатива: `git clone` + `sudo ./scripts/install_debian.sh --local`.
+
+## Быстрый старт: Windows Server
 
 На Windows Server 2019+ (кратко; детали в [DEPLOYMENT.md](DEPLOYMENT.md)):
 
@@ -76,7 +99,16 @@ WEB_PASSWORD=...       # Basic Auth для UI; без пароля auth выкл
 
 ## Запуск (консоль)
 
-Из корня проекта:
+### Linux / Debian
+
+```bash
+.venv/bin/python main.py
+.venv/bin/python main.py --dry-run
+.venv/bin/python main.py --send
+.venv/bin/python main.py --serve
+```
+
+### Windows
 
 ```bat
 .venv\Scripts\python.exe main.py
@@ -85,11 +117,22 @@ WEB_PASSWORD=...       # Basic Auth для UI; без пароля auth выкл
 .venv\Scripts\python.exe main.py --serve
 ```
 
-## Служба Windows + web UI
+## Служба + web UI
+
+### Debian 12 (systemd)
+
+Полный чеклист: [DEPLOYMENT_DEBIAN.md](DEPLOYMENT_DEBIAN.md).
+
+```bash
+sudo ./scripts/install_service.sh
+sudo systemctl enable --now ad-password-notifier
+```
+
+Удаление: `sudo ./scripts/uninstall_service.sh`.
+
+### Windows (NSSM)
 
 Полный чеклист: [DEPLOYMENT.md](DEPLOYMENT.md).
-
-Кратко:
 
 ```bat
 scripts\install_service.bat
@@ -106,38 +149,55 @@ scripts\install_service.bat
 3. **Пауза рассылки** — не слать письма пользователям до указанной даты.
 4. **Напомнить выбранным** — принудительное письмо отмеченным учёткам.
 
-Учётку службы в `services.msc` → Log On задайте доменную с read LDAP (не SYSTEM, если нет доступа к DC).  
+На Windows учётку службы в `services.msc` → Log On задайте доменную с read LDAP.  
+На Debian служба работает от `ad-pwd-notifier`; LDAP идёт по NTLM из `config.ini` / `.env`.  
 Смена `host`/`port` web требует перезапуска службы; остальные настройки подхватываются после «Сохранить».
 
-## Планировщик заданий (альтернатива)
+## Планировщик (альтернатива без службы)
 
-Если служба и UI не нужны:
+### Debian (cron)
+
+```bash
+sudo crontab -u ad-pwd-notifier -e
+# 0 8 * * * cd /opt/ad-password-notifier && .venv/bin/python main.py --send
+```
+
+### Windows (Планировщик заданий)
 
 ```bat
 schtasks /create /tn "AD Password Notifier" /tr "C:\path\to\.venv\Scripts\python.exe C:\path\to\main.py --send" /sc daily /st 08:00 /ru DOMAIN\svc_pwd_notifier
 ```
 
-Рабочий каталог задачи — корень проекта. Подробности — в [DEPLOYMENT.md](DEPLOYMENT.md).
+Рабочий каталог задачи — корень проекта. Подробности — в [DEPLOYMENT.md](DEPLOYMENT.md) / [DEPLOYMENT_DEBIAN.md](DEPLOYMENT_DEBIAN.md).
 
 ## Тесты
 
-```bat
-.venv\Scripts\python.exe -m pytest -q
+```bash
+.venv/bin/python -m pytest -q
 ```
+
+На Windows: `.venv\Scripts\python.exe -m pytest -q`.
 
 Живые LDAP и SMTP в unit-тестах не вызываются.
 
 ## Структура проекта
 
 ```
-DEPLOYMENT.md           # развёртывание на Windows Server
-main.py                 # CLI + пайплайн
-service_main.py         # --serve: web + scheduler
+DEPLOYMENT.md              # развёртывание на Windows Server
+DEPLOYMENT_DEBIAN.md       # развёртывание на Debian 12 + one-line
+main.py                    # CLI + пайплайн
+service_main.py            # --serve: web + scheduler
 scheduler_service.py
-report_store.py         # data/last_report.json
+report_store.py            # data/last_report.json
 config.py / config_writer.py
-web/                    # FastAPI UI
-scripts/                # install/uninstall NSSM
-templates/              # письма
+web/                       # FastAPI UI
+scripts/
+  install_debian.sh        # онлайн/локальная установка на Debian 12
+  install_service.sh       # systemd
+  uninstall_service.sh
+  ad-password-notifier.service
+  install_service.bat      # Windows NSSM
+  uninstall_service.bat
+templates/                 # письма
 tests/
 ```
