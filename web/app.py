@@ -306,9 +306,24 @@ def create_app(
         return RedirectResponse(url="/", status_code=303)
 
     @app.post("/actions/test-ad")
-    def action_test_ad(request: Request, _: None = Depends(require_auth)) -> RedirectResponse:
+    def action_test_ad(
+        request: Request,
+        _: None = Depends(require_auth),
+        ad_server: str = Form(""),
+        ad_domain: str = Form(""),
+        ad_service_user: str = Form(""),
+        ad_service_password: str = Form(""),
+        ad_search_base: str = Form(""),
+    ) -> RedirectResponse:
         try:
-            msg = test_ad_connection(get_cfg())
+            msg = test_ad_connection(
+                get_cfg(),
+                server=ad_server,
+                domain=ad_domain,
+                service_user=ad_service_user,
+                service_password=ad_service_password,
+                search_base=ad_search_base,
+            )
             _flash(request, msg, "ok")
         except AdClientError as exc:
             _flash(request, str(exc), "error")

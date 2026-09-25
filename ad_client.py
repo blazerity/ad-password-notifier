@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
-from ldap3 import ALL, NTLM, SUBTREE, Connection, Server
+from ldap3 import ALL, BASE, NTLM, SUBTREE, Connection, Server
 from ldap3.core.exceptions import LDAPException
 
 from config import AdConfig
@@ -167,6 +167,36 @@ class AdClient:
             self._connection.unbind()
             logger.info("Соединение с AD закрыто")
         self._connection = None
+
+    def verify_search_access(self) -> str:
+        """Проверить, что УЗ может читать search_base (BASE-поиск).
+
+        Возвращает DN найденного объекта или бросает AdClientError.
+        """
+        if self._connection is None or not self._connection.bound:
+            raise AdClientError("Сначала вызовите connect()")
+
+        try:
+            ok = self._connection.search(
+                search_base=self._config.search_base,
+                search_filter="(objectClass=*)",
+                search_scope=BASE,
+                attributes=["distinguishedName"],
+                size_limit=1,
+            )
+        except LDAPException as exc:
+            raise AdClientError(
+                f"Нет доступа к search_base «{self._config.search_base}»: {exc}"
+            ) from exc
+
+        if not ok or not self._connection.entries:
+            raise AdClientError(
+                f"Нет доступа к search_base «{self._config.search_base}»: "
+                "объект не найден или недостаточно прав"
+            )
+        dn = str(self._connection.entries[0].entry_dn)
+        logger.info("Доступ к search_base подтверждён: %s", dn)
+        return dn
 
     def fetch_users(
         self,
