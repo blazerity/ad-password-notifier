@@ -1,11 +1,53 @@
-# Развёртывание на Windows Server
+# Развёртывание на Debian 12
 
-Пошаговая инструкция для Windows Server 2019 / 2022 (подойдёт и Windows 10/11 для теста).  
-Цель: служба **AD Password Notifier** с web UI и ежедневной проверкой паролей AD.
+Пошаговая инструкция для **Debian 12 (bookworm)**.  
+Цель: служба **AD Password Notifier** (systemd) с web UI и ежедневной проверкой паролей AD.
 
-Для **Debian 12** см. [DEPLOYMENT_DEBIAN.md](DEPLOYMENT_DEBIAN.md) (есть one-line установка из git).
+Рекомендуемый путь установки: `/opt/ad-password-notifier`.
 
-Рекомендуемый путь установки: `C:\Apps\ad-password-notifier`.
+---
+
+## Быстрая установка (one-line из git)
+
+На чистом Debian 12 от root:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/blazerity/ad-password-notifier/main/scripts/install_debian.sh | sudo bash
+```
+
+Скрипт:
+
+1. ставит `git`, Python 3.11+, `python3-venv`;
+2. клонирует ветку в `/opt/ad-password-notifier`;
+3. создаёт `.venv` и ставит зависимости;
+4. копирует `config.example.ini` → `config.ini` и `.env.example` → `.env` (если их ещё нет);
+5. создаёт пользователя `ad-pwd-notifier` и unit `ad-password-notifier.service`.
+
+После установки **обязательно** отредактируйте конфиг и запустите службу (см. ниже).
+
+Параметры (через окружение или аргументы скрипта):
+
+| Переменная / флаг | Значение по умолчанию | Назначение |
+|---|---|---|
+| `REPO_URL` / `--repo` | `https://github.com/blazerity/ad-password-notifier.git` | репозиторий |
+| `BRANCH` / `--branch` | `main` | ветка |
+| `INSTALL_DIR` / `--dir` | `/opt/ad-password-notifier` | каталог |
+| `SKIP_SERVICE=1` / `--skip-service` | выкл. | не ставить systemd |
+| `START_SERVICE=1` / `--start` | выкл. | сразу `systemctl start` |
+
+Пример с другой веткой и автозапуском:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/blazerity/ad-password-notifier/main/scripts/install_debian.sh \
+  | sudo env BRANCH=main START_SERVICE=0 bash -s -- --branch main
+```
+
+Если репозиторий **приватный**, `curl` к `raw.githubusercontent.com` без токена не сработает.  
+Сделайте репозиторий публичным **или** клонируйте вручную (вариант A ниже) и запустите:
+
+```bash
+sudo ./scripts/install_debian.sh --local
+```
 
 ---
 
@@ -13,14 +55,15 @@
 
 | Компонент | Зачем |
 |---|---|
-| Python **3.11+** (x64) | runtime |
-| Доступ к репозиторию / архиву проекта | код |
-| [NSSM](https://nssm.cc/download) | служба Windows (обёртка над `python main.py --serve`) |
+| Debian **12** (bookworm), amd64 | целевая ОС |
+| Python **3.11+** (из репозиториев Debian) | runtime |
+| git | клонирование |
+| systemd | служба |
 | Учётка AD только на **чтение** | LDAP |
-| SMTP-релей (Exchange и т.п.) | письма |
-| Права локального администратора на сервере | установка службы |
+| SMTP-релей | письма |
+| root / sudo | установка пакетов и unit |
 
-Docker не нужен.
+Docker не обязателен.
 
 ---
 
@@ -28,76 +71,54 @@ Docker не нужен.
 
 1. Создайте пользователя, например `DOMAIN\svc_pwd_notifier`.
 2. **Не** добавляйте в Domain Admins.
-3. На нужных OU выдайте права чтения списка объектов и свойств user.
-4. Пароль этой учётки потом попадёт только в `.env` (`AD_SERVICE_PASSWORD`).
+3. На нужных OU — чтение списка объектов и свойств user.
+4. Пароль только в `.env` (`AD_SERVICE_PASSWORD`).
 
-Проверка с рабочей станции (по желанию):
+С Debian-сервера проверьте доступность DC:
 
-```bat
-nltest /dsgetdc:DOMAIN
+```bash
+getent hosts dc01.domain.local
+# при необходимости: apt install ldap-utils && ldapsearch -x -H ldap://dc01.domain.local -b '' -s base
 ```
 
 ---
 
-## 3. Установка Python
+## 3. Вариант A — ручная установка из git
 
-1. Скачайте Python 3.11+ x64 с [python.org](https://www.python.org/downloads/windows/).
-2. При установке включите **Add python.exe to PATH**.
-3. Проверьте:
+```bash
+sudo apt update
+sudo apt install -y git python3 python3-venv python3-pip python3-dev build-essential
 
-```bat
-py -3.11 --version
+sudo mkdir -p /opt
+sudo git clone --branch main \
+  https://github.com/blazerity/ad-password-notifier.git \
+  /opt/ad-password-notifier
+cd /opt/ad-password-notifier
+
+sudo python3 -m venv .venv
+sudo .venv/bin/pip install --upgrade pip
+sudo .venv/bin/pip install -r requirements.txt
+
+sudo cp -n config.example.ini config.ini
+sudo cp -n .env.example .env
+```
+
+Проверка импортов:
+
+```bash
+sudo .venv/bin/python -c "import fastapi, ldap3, apscheduler; print('OK')"
 ```
 
 ---
 
-## 4. Код приложения
+## 4. Конфигурация
 
-### Вариант A — git
-
-```bat
-mkdir C:\Apps
-cd C:\Apps
-git clone <URL-репозитория> ad-password-notifier
-cd ad-password-notifier
+```bash
+sudo nano /opt/ad-password-notifier/config.ini
+sudo nano /opt/ad-password-notifier/.env
 ```
 
-### Вариант B — архив
-
-Распакуйте релиз/ветку в `C:\Apps\ad-password-notifier`.
-
----
-
-## 5. Виртуальное окружение и зависимости
-
-В **cmd** от имени пользователя, который будет администрировать приложение:
-
-```bat
-cd C:\Apps\ad-password-notifier
-py -3.11 -m venv .venv
-.venv\Scripts\activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-```
-
-Проверка импорта:
-
-```bat
-.venv\Scripts\python.exe -c "import fastapi, ldap3, apscheduler; print('OK')"
-```
-
----
-
-## 6. Конфигурация
-
-```bat
-copy config.example.ini config.ini
-copy .env.example .env
-```
-
-Отредактируйте файлы в блокноте или через web UI после первого старта.
-
-### 6.1. `config.ini` — минимум
+### 4.1. `config.ini` — минимум
 
 ```ini
 [ad]
@@ -136,186 +157,184 @@ port = 8787
 
 Замечания:
 
-- Для LDAPS: `server = ldaps://dc01.domain.local`.
-- `cron` — 5 полей: `минута час день месяц день_недели` (пример выше = каждый день в 08:00).
-- `host = 127.0.0.1` — UI только с этого сервера. Для доступа с других ПК во внутренней сети: `0.0.0.0` + firewall + **обязательно** `WEB_PASSWORD`.
+- LDAPS: `server = ldaps://dc01.domain.local`.
+- `cron` — 5 полей (`минута час день месяц день_недели`).
+- `host = 127.0.0.1` — UI только локально. Для LAN: `0.0.0.0` + firewall + **обязательно** `WEB_PASSWORD`.
 
-### 6.2. `.env` — секреты
+### 4.2. `.env` — секреты
 
 ```env
 AD_SERVICE_PASSWORD=********
 WEB_USER=admin
 WEB_PASSWORD=********
 
-# Необязательно: иначе SMTP AUTH = from_address + AD_SERVICE_PASSWORD
+# Необязательно:
 # SMTP_USER=noreply@domain.local
 # SMTP_PASSWORD=********
 ```
 
-Права на `.env`: только администраторы сервера / учётка службы.
+```bash
+sudo chmod 600 /opt/ad-password-notifier/.env
+sudo chmod 640 /opt/ad-password-notifier/config.ini
+```
 
 ---
 
-## 7. Проверка до установки службы
+## 5. Проверка до установки службы
 
-Из корня проекта:
-
-```bat
-cd C:\Apps\ad-password-notifier
-.venv\Scripts\python.exe main.py --dry-run
+```bash
+cd /opt/ad-password-notifier
+sudo -u ad-pwd-notifier .venv/bin/python main.py --dry-run
 ```
 
-Ожидаемо:
+Если пользователь службы ещё не создан:
 
-- подключение к AD;
-- HTML-превью в `data\previews\`;
-- SMTP и CSV **не** трогаются.
+```bash
+sudo .venv/bin/python main.py --dry-run
+```
+
+Ожидаемо: подключение к AD, превью в `data/previews/`, без SMTP и без записи CSV.
 
 Боевой разовый прогон:
 
-```bat
-.venv\Scripts\python.exe main.py --send
+```bash
+sudo -u ad-pwd-notifier .venv/bin/python main.py --send
 ```
 
-Ручной запуск UI (без службы):
+Ручной UI без systemd:
 
-```bat
-.venv\Scripts\python.exe main.py --serve
+```bash
+sudo -u ad-pwd-notifier .venv/bin/python main.py --serve
 ```
 
-Откройте в браузере на сервере: http://127.0.0.1:8787/  
-Логин/пароль — из `.env` (`WEB_USER` / `WEB_PASSWORD`).
-
-Остановка: `Ctrl+C` в консоли.
+Откройте http://127.0.0.1:8787/ (логин/пароль из `.env`). Остановка: `Ctrl+C`.
 
 ---
 
-## 8. Установка как службы Windows (NSSM)
+## 6. Установка как systemd-службы
 
-### 8.1. NSSM
+Если ставили one-line или `install_debian.sh` — unit уже зарегистрирован. Иначе:
 
-1. Скачайте NSSM: https://nssm.cc/download  
-2. Из архива возьмите `nssm.exe` для вашей разрядности (`win64`).
-3. Либо положите в `C:\Apps\ad-password-notifier\scripts\nssm.exe`, либо добавьте каталог с `nssm.exe` в PATH.
-
-### 8.2. Установка
-
-Запустите **cmd от имени администратора**:
-
-```bat
-cd C:\Apps\ad-password-notifier
-scripts\install_service.bat
+```bash
+cd /opt/ad-password-notifier
+sudo ./scripts/install_service.sh
+sudo systemctl start ad-password-notifier
+sudo systemctl status ad-password-notifier
 ```
 
-Скрипт создаёт службу `ADPasswordNotifier`, рабочий каталог = корень проекта, автозапуск, логи:
+Управление:
 
-- `logs\service_stdout.log`
-- `logs\service_stderr.log`
-
-### 8.3. Учётка службы (Log On)
-
-1. `Win+R` → `services.msc`
-2. Служба **AD Password Notifier** → свойства → **Вход в систему**
-3. Укажите `DOMAIN\svc_pwd_notifier` и пароль  
-   **Не используйте Local System**, если у SYSTEM нет нормального доступа к DC.
-4. Перезапустите службу:
-
-```bat
-nssm restart ADPasswordNotifier
+```bash
+sudo systemctl stop ad-password-notifier
+sudo systemctl restart ad-password-notifier
+sudo journalctl -u ad-password-notifier -f
 ```
 
-или через `services.msc`.
+Логи приложения: `/opt/ad-password-notifier/logs/`.
 
-### 8.4. Firewall (если UI нужен с других ПК)
+### Firewall (UI с других хостов)
 
-Только после смены `[web] host = 0.0.0.0` и сильного `WEB_PASSWORD`:
+Только после `host = 0.0.0.0` и сильного `WEB_PASSWORD`:
 
-```bat
-netsh advfirewall firewall add rule name="AD Password Notifier UI" dir=in action=allow protocol=TCP localport=8787
+```bash
+# nftables / iptables — по политике сайта; пример для ufw:
+sudo apt install -y ufw
+sudo ufw allow 8787/tcp
+sudo ufw reload
 ```
 
 ---
 
-## 9. Web UI после развёртывания
+## 7. Web UI
 
 | Страница | Назначение |
 |---|---|
 | **Отчёт** | состояние учёток, «Запустить сейчас», тестовый прогон, пауза, ручные напоминания |
-| **Настройки** | AD / SMTP / пороги / cron / web; кнопки «Проверить LDAP» и «Проверить SMTP» |
+| **Настройки** | AD / SMTP / пороги / cron / web; «Проверить соединение и доступ к AD» (по полям формы) / «Проверить SMTP» |
 
-После «Сохранить» большинство параметров подхватываются без рестарта.  
-Смена `host` / `port` web — нужен перезапуск службы.
+Смена `host` / `port` web требует `systemctl restart ad-password-notifier`.
 
 ---
 
-## 10. Обновление версии
+## 8. Обновление версии
 
-```bat
-cd C:\Apps\ad-password-notifier
-nssm stop ADPasswordNotifier
-
-git pull
-REM или замените файлы из нового архива, сохранив config.ini и .env
-
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-nssm start ADPasswordNotifier
+```bash
+sudo systemctl stop ad-password-notifier
+cd /opt/ad-password-notifier
+sudo -u ad-pwd-notifier git pull
+sudo -u ad-pwd-notifier .venv/bin/pip install -r requirements.txt
+sudo systemctl start ad-password-notifier
 ```
 
-`config.ini`, `.env`, `data\notification_history.csv` в git не коммитьте — они должны остаться на сервере.
+`config.ini`, `.env`, `data/notification_history.csv` в git не коммитьте.
 
----
+Если one-line ставил от root и владельцы сбились:
 
-## 11. Удаление службы
-
-```bat
-cd C:\Apps\ad-password-notifier
-scripts\uninstall_service.bat
+```bash
+sudo chown -R ad-pwd-notifier:ad-pwd-notifier /opt/ad-password-notifier
 ```
 
-Каталог приложения и данные при этом не удаляются.
-
 ---
 
-## 12. Альтернатива без службы (Планировщик заданий)
+## 9. Удаление службы
 
-Если web UI не нужен — только ежедневная рассылка:
-
-```bat
-schtasks /create /tn "AD Password Notifier" /tr "C:\Apps\ad-password-notifier\.venv\Scripts\python.exe C:\Apps\ad-password-notifier\main.py --send" /sc daily /st 08:00 /ru DOMAIN\svc_pwd_notifier
+```bash
+cd /opt/ad-password-notifier
+sudo ./scripts/uninstall_service.sh
 ```
 
-В свойствах задачи укажите **начальную папку** = `C:\Apps\ad-password-notifier`.
+Каталог `/opt/ad-password-notifier` и пользователь `ad-pwd-notifier` остаются.
+
+Полное удаление:
+
+```bash
+sudo ./scripts/uninstall_service.sh
+sudo userdel ad-pwd-notifier
+sudo rm -rf /opt/ad-password-notifier
+```
 
 ---
 
-## 13. Диагностика
+## 10. Альтернатива без службы (cron)
+
+Только ежедневная рассылка без web UI:
+
+```bash
+sudo crontab -u ad-pwd-notifier -e
+```
+
+```cron
+0 8 * * * cd /opt/ad-password-notifier && /opt/ad-password-notifier/.venv/bin/python main.py --send >> /opt/ad-password-notifier/logs/cron.log 2>&1
+```
+
+Не включайте одновременно cron на `--send` и systemd с `[schedule] enabled = true`.
+
+---
+
+## 11. Диагностика
 
 | Симптом | Куда смотреть |
 |---|---|
-| Служба не стартует | `logs\service_stderr.log`, Event Viewer → Windows Logs → Application |
-| Нет LDAP | `[ad]` в `config.ini`, пароль в `.env`, Log On службы, LDAPS |
-| Нет писем | `[smtp]`, `SMTP_USER`/`SMTP_PASSWORD`, права на relay |
-| UI 401 / без пароля | `WEB_PASSWORD` в `.env` |
-| UI не открывается с другого ПК | `[web] host`, firewall, порт |
-| Двойной прогон | не держите одновременно службу и schtasks на `--send` |
+| Служба не стартует | `journalctl -u ad-password-notifier -xe`, `logs/` |
+| Нет LDAP | `[ad]`, `.env`, сеть/DNS до DC, LDAPS/сертификаты |
+| Нет писем | `[smtp]`, `SMTP_USER`/`SMTP_PASSWORD`, relay |
+| UI 401 | `WEB_PASSWORD` в `.env` |
+| UI с другого ПК | `[web] host`, firewall, порт 8787 |
+| Permission denied | `chown -R ad-pwd-notifier:ad-pwd-notifier /opt/ad-password-notifier` |
 
-Ручной тест связей из UI: **Настройки → Проверить LDAP / Проверить SMTP**.
-
-Логи приложения: `logs\ad_password_notifier_*.log`.
-
-Коды выхода прогона: `0` — ок, `1` — ошибка конфига/AD/SMTP-отчёта, `2` — уже идёт другой прогон.
+Коды выхода прогона: `0` — ок, `1` — ошибка конфига/AD/SMTP, `2` — уже идёт другой прогон.
 
 ---
 
-## 14. Чеклист готовности
+## 12. Чеклист готовности
 
-- [ ] Python 3.11+ установлен  
-- [ ] `.venv` и `pip install -r requirements.txt`  
-- [ ] Заполнены `config.ini` и `.env`  
-- [ ] `--dry-run` успешен  
-- [ ] NSSM: служба установлена и Running  
-- [ ] Log On = доменная учётка с read LDAP  
-- [ ] UI открывается, Basic Auth работает  
-- [ ] В UI проверка LDAP/SMTP — OK  
-- [ ] В `[schedule]` нужный cron, `enabled = true`  
-- [ ] Получатели в `[admins]` корректны  
+- [ ] Debian 12, Python 3.11+
+- [ ] Код в `/opt/ad-password-notifier`, `.venv`, зависимости
+- [ ] Заполнены `config.ini` и `.env`
+- [ ] `--dry-run` успешен
+- [ ] `systemctl is-enabled ad-password-notifier` → enabled
+- [ ] `systemctl is-active ad-password-notifier` → active
+- [ ] UI открывается, Basic Auth работает
+- [ ] В UI проверка соединения/доступа AD и SMTP — OK
+- [ ] В `[schedule]` нужный cron, `enabled = true`
+- [ ] Получатели в `[admins]` корректны

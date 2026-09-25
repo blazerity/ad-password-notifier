@@ -10,7 +10,7 @@ from typing import Any
 import uvicorn
 
 from config import ConfigError, load_config
-from main import setup_logging
+from pipeline import setup_logging
 from scheduler_service import AppScheduler
 from web.app import create_app
 

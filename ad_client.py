@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 
 from ldap3 import ALL, BASE, NTLM, SUBTREE, Connection, Server
 from ldap3.core.exceptions import LDAPException
 
-from config import AdConfig
+from config import AdConfig, AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -286,3 +286,51 @@ class AdClient:
             skipped_excluded,
         )
         return users
+
+
+def test_ad_connection(
+    config: AppConfig,
+    *,
+    server: str | None = None,
+    domain: str | None = None,
+    service_user: str | None = None,
+    service_password: str | None = None,
+    search_base: str | None = None,
+) -> str:
+    """Проверить LDAP-соединение и доступ УЗ к search_base.
+
+    Непустые override-параметры подставляются вместо значений из config
+    (удобно проверить поля формы до сохранения). Пустой пароль → из config.
+    """
+    ad = config.ad
+    overrides: dict[str, object] = {}
+    if server and server.strip():
+        overrides["server"] = server.strip()
+    if domain and domain.strip():
+        overrides["domain"] = domain.strip()
+    if service_user and service_user.strip():
+        overrides["service_user"] = service_user.strip()
+    if service_password:
+        overrides["service_password"] = service_password
+    if search_base and search_base.strip():
+        overrides["search_base"] = search_base.strip()
+    if overrides:
+        ad = replace(ad, **overrides)
+
+    if not ad.service_password:
+        raise AdClientError(
+            "Не задан пароль сервисной УЗ (укажите в форме или AD_SERVICE_PASSWORD в .env)"
+        )
+    if not ad.server or not ad.service_user or not ad.search_base:
+        raise AdClientError("Укажите сервер, учётную запись и search_base")
+
+    client = AdClient(ad)
+    try:
+        client.connect()
+        dn = client.verify_search_access()
+        return (
+            f"AD OK: соединение и доступ подтверждены — "
+            f"{ad.server} ({ad.domain}\\{ad.service_user}), search_base={dn}"
+        )
+    finally:
+        client.unbind()

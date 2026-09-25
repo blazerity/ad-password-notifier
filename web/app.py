@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from ad_client import AdClientError
+from ad_client import AdClientError, test_ad_connection
 from config import (
     DEFAULT_CONFIG_PATH,
     DEFAULT_ENV_PATH,
@@ -25,8 +25,8 @@ from config import (
     load_config,
 )
 from config_writer import relative_to_project, save_ini_settings, update_env_secrets
-from mailer import MailerError
-from main import notify_users_now, run_pipeline, setup_logging, test_ad_connection, test_smtp_connection
+from mailer import MailerError, test_smtp_connection
+from pipeline import notify_users_now, run_pipeline, setup_logging
 from report_store import load_report, load_run_status
 
 logger = logging.getLogger(__name__)
@@ -332,7 +332,7 @@ def create_app(
     @app.post("/actions/test-smtp")
     def action_test_smtp(request: Request, _: None = Depends(require_auth)) -> RedirectResponse:
         try:
-            msg = test_smtp_connection(get_cfg())
+            msg = test_smtp_connection(get_cfg().smtp)
             _flash(request, msg, "ok")
         except MailerError as exc:
             _flash(request, str(exc), "error")

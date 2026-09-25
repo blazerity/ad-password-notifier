@@ -131,3 +131,18 @@ class Mailer:
     def _authenticate(self, client: smtplib.SMTP) -> None:
         if self._smtp.username:
             client.login(self._smtp.username, self._smtp.password or "")
+
+
+def test_smtp_connection(smtp: SmtpConfig) -> str:
+    """Проверить SMTP (EHLO + AUTH без отправки письма)."""
+    try:
+        with smtplib.SMTP(smtp.host, smtp.port, timeout=30) as client:
+            client.ehlo()
+            if smtp.use_tls or smtp.use_starttls:
+                client.starttls(context=ssl.create_default_context())
+                client.ehlo()
+            if smtp.username:
+                client.login(smtp.username, smtp.password or "")
+        return f"SMTP OK: {smtp.host}:{smtp.port}"
+    except (OSError, smtplib.SMTPException) as exc:
+        raise MailerError(f"SMTP недоступен ({smtp.host}:{smtp.port}): {exc}") from exc

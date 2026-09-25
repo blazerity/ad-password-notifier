@@ -2,11 +2,11 @@
 # Онлайн-установка AD Password Notifier на Debian 12 из git.
 #
 # Одной строкой (после публикации репозитория / ветки):
-#   curl -fsSL https://raw.githubusercontent.com/blazerity/ad-password-notifier/cursor/debian-12-deployment-f1d7/scripts/install_debian.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/blazerity/ad-password-notifier/main/scripts/install_debian.sh | sudo bash
 #
 # Параметры окружения (необязательно):
 #   REPO_URL=https://github.com/blazerity/ad-password-notifier.git
-#   BRANCH=cursor/debian-12-deployment-f1d7
+#   BRANCH=main
 #   INSTALL_DIR=/opt/ad-password-notifier
 #   SKIP_SERVICE=1          — не ставить systemd
 #   START_SERVICE=1         — сразу systemctl start (только если конфиг уже готов)
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/blazerity/ad-password-notifier.git}"
-BRANCH="${BRANCH:-cursor/debian-12-deployment-f1d7}"
+BRANCH="${BRANCH:-main}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/ad-password-notifier}"
 SERVICE_USER="ad-pwd-notifier"
 SKIP_SERVICE="${SKIP_SERVICE:-0}"
@@ -29,7 +29,7 @@ Usage: install_debian.sh [--local] [--branch NAME] [--dir PATH] [--repo URL]
                          [--skip-service] [--start]
 
   --local          установить из текущего checkout (не клонировать)
-  --branch NAME    ветка git (по умолчанию cursor/debian-12-deployment-f1d7)
+  --branch NAME    ветка git (по умолчанию main)
   --dir PATH       каталог установки (по умолчанию /opt/ad-password-notifier)
   --repo URL       URL репозитория
   --skip-service   не устанавливать systemd-службу
@@ -173,6 +173,6 @@ AD Password Notifier установлен.
   4. sudo systemctl enable --now ad-password-notifier
   5. Откройте http://127.0.0.1:8787/
 
-Документация: ${INSTALL_DIR}/DEPLOYMENT_DEBIAN.md
+Документация: ${INSTALL_DIR}/DEPLOYMENT.md
 ========================================
 EOF

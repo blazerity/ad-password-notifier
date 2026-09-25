@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from config import load_config
-from main import run_pipeline
+from pipeline import run_pipeline
 from tests.factories import make_user
 
 INI = """
@@ -69,11 +69,11 @@ def test_pause_skips_user_mail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     mock_client.__exit__ = MagicMock(return_value=False)
 
     with (
-        patch("main.AdClient", return_value=mock_client),
-        patch("main.Mailer") as mailer_cls,
-        patch("main.save_report"),
-        patch("main.save_run_status"),
-        patch("main.run_lock"),
+        patch("pipeline.AdClient", return_value=mock_client),
+        patch("pipeline.Mailer") as mailer_cls,
+        patch("pipeline.save_report"),
+        patch("pipeline.save_run_status"),
+        patch("pipeline.run_lock"),
     ):
         mailer = mailer_cls.return_value
         mailer.render_admin_report.return_value = "<html></html>"
