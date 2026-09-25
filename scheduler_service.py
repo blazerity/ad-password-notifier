@@ -10,7 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from config import AppConfig
-from main import run_pipeline
+from pipeline import run_pipeline
 
 logger = logging.getLogger(__name__)
 
