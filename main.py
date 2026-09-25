@@ -374,12 +374,52 @@ def notify_users_now(
         return RunResult(exit_code=2, error=str(exc))
 
 
-def test_ad_connection(config: AppConfig) -> str:
-    """Проверить LDAP-подключение. Возвращает сообщение об успехе или бросает AdClientError."""
-    client = AdClient(config.ad)
+def test_ad_connection(
+    config: AppConfig,
+    *,
+    server: str | None = None,
+    domain: str | None = None,
+    service_user: str | None = None,
+    service_password: str | None = None,
+    search_base: str | None = None,
+) -> str:
+    """Проверить LDAP-соединение и доступ УЗ к search_base.
+
+    Непустые override-параметры подставляются вместо значений из config
+    (удобно проверить поля формы до сохранения). Пустой пароль → из config.
+    """
+    from dataclasses import replace
+
+    ad = config.ad
+    overrides: dict[str, object] = {}
+    if server and server.strip():
+        overrides["server"] = server.strip()
+    if domain and domain.strip():
+        overrides["domain"] = domain.strip()
+    if service_user and service_user.strip():
+        overrides["service_user"] = service_user.strip()
+    if service_password:
+        overrides["service_password"] = service_password
+    if search_base and search_base.strip():
+        overrides["search_base"] = search_base.strip()
+    if overrides:
+        ad = replace(ad, **overrides)
+
+    if not ad.service_password:
+        raise AdClientError(
+            "Не задан пароль сервисной УЗ (укажите в форме или AD_SERVICE_PASSWORD в .env)"
+        )
+    if not ad.server or not ad.service_user or not ad.search_base:
+        raise AdClientError("Укажите сервер, учётную запись и search_base")
+
+    client = AdClient(ad)
     try:
         client.connect()
-        return f"AD OK: {config.ad.server} ({config.ad.domain}\\{config.ad.service_user})"
+        dn = client.verify_search_access()
+        return (
+            f"AD OK: соединение и доступ подтверждены — "
+            f"{ad.server} ({ad.domain}\\{ad.service_user}), search_base={dn}"
+        )
     finally:
         client.unbind()
 

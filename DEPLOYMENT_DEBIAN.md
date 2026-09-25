@@ -250,7 +250,7 @@ sudo ufw reload
 | Страница | Назначение |
 |---|---|
 | **Отчёт** | состояние учёток, «Запустить сейчас», тестовый прогон, пауза, ручные напоминания |
-| **Настройки** | AD / SMTP / пороги / cron / web; «Проверить LDAP» / «Проверить SMTP» |
+| **Настройки** | AD / SMTP / пороги / cron / web; «Проверить соединение и доступ к AD» (по полям формы) / «Проверить SMTP» |
 
 Смена `host` / `port` web требует `systemctl restart ad-password-notifier`.
 
@@ -335,6 +335,6 @@ sudo crontab -u ad-pwd-notifier -e
 - [ ] `systemctl is-enabled ad-password-notifier` → enabled
 - [ ] `systemctl is-active ad-password-notifier` → active
 - [ ] UI открывается, Basic Auth работает
-- [ ] В UI проверка LDAP/SMTP — OK
+- [ ] В UI проверка соединения/доступа AD и SMTP — OK
 - [ ] В `[schedule]` нужный cron, `enabled = true`
 - [ ] Получатели в `[admins]` корректны
