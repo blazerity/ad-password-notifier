@@ -1,0 +1,353 @@
+{% macro status_badge(status) -%}
+{% if status == 'online' %}
+<span class="badge text-bg-success">доступен</span>
+{% elif status == 'offline' %}
+<span class="badge text-bg-danger">недоступен</span>
+{% else %}
+<span class="badge text-bg-secondary">неизвестно</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro status_dot(status) -%}
+{% if status == 'online' %}
+<span class="status-dot online" title="доступен" aria-label="доступен"></span>
+{% elif status == 'offline' %}
+<span class="status-dot offline" title="недоступен" aria-label="недоступен"></span>
+{% else %}
+<span class="status-dot unknown" title="неизвестно" aria-label="неизвестно"></span>
+{% endif %}
+{%- endmacro %}
+
+{% macro device_kind_short(kind) -%}
+{%- if kind == 'notebook' -%}Ноутбук
+{%- elif kind == 'desktop' -%}СБ
+{%- elif kind == 'vds' -%}VDS
+{%- elif kind == 'server' -%}Сервер
+{%- elif kind == 'firewall' -%}Firewall
+{%- elif kind == 'router' -%}MikroTik
+{%- elif kind == 'camera' -%}Камера
+{%- elif kind == 'printer' -%}МФУ
+{%- else -%}Прочее
+{%- endif -%}
+{%- endmacro %}
+
+{% macro device_status_short(status) -%}
+{%- if status == 'online' -%}Онлайн
+{%- elif status == 'offline' -%}Офлайн
+{%- else -%}Неизв.
+{%- endif -%}
+{%- endmacro %}
+
+{% macro device_type_icon(kind) -%}
+{% set kind = kind or 'other' %}
+{% if kind == 'notebook' %}
+<span class="device-type-icon" title="Ноутбук" aria-label="Ноутбук">
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="12" rx="1.5"></rect>
+    <path d="M2 20h20"></path>
+    <path d="M8 20h8"></path>
+  </svg>
+</span>
+{% elif kind == 'desktop' %}
+<span class="device-type-icon" title="СБ" aria-label="СБ">
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="3" y="3" width="18" height="13" rx="1.5"></rect>
+    <path d="M8 20h8"></path>
+    <path d="M12 16v4"></path>
+  </svg>
+</span>
+{% elif kind == 'vds' %}
+<span class="device-type-icon" title="VDS" aria-label="VDS">
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="2" y="3" width="20" height="14" rx="2"></rect>
+    <path d="M8 21h8"></path>
+    <path d="M12 17v4"></path>
+    <path d="m15 8 5-5"></path>
+    <path d="M16 3h5v5"></path>
+  </svg>
+</span>
+{% elif kind == 'server' %}
+<span class="device-type-icon" title="Сервер" aria-label="Сервер">
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="2" y="2" width="20" height="8" rx="2"></rect>
+    <rect x="2" y="14" width="20" height="8" rx="2"></rect>
+    <circle cx="6" cy="6" r="0.8" fill="currentColor" stroke="none"></circle>
+    <circle cx="6" cy="18" r="0.8" fill="currentColor" stroke="none"></circle>
+  </svg>
+</span>
+{% elif kind == 'firewall' %}
+<span class="device-type-icon" title="Сетевое устройство" aria-label="Сетевое устройство">
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="3" y="10" width="18" height="10" rx="2"></rect>
+    <path d="M7 10V7a5 5 0 0 1 10 0v3"></path>
+    <circle cx="8" cy="15" r="0.8" fill="currentColor" stroke="none"></circle>
+    <circle cx="12" cy="15" r="0.8" fill="currentColor" stroke="none"></circle>
+    <circle cx="16" cy="15" r="0.8" fill="currentColor" stroke="none"></circle>
+  </svg>
+</span>
+{% elif kind == 'router' %}
+<span class="device-type-icon" title="MikroTik" aria-label="MikroTik">
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <rect x="4" y="8" width="16" height="10" rx="2"></rect>
+    <path d="M8 8V5"></path>
+    <path d="M16 8V5"></path>
+    <circle cx="8" cy="4" r="1"></circle>
+    <circle cx="16" cy="4" r="1"></circle>
+    <path d="M8 13h.01"></path>
+    <path d="M12 13h.01"></path>
+    <path d="M16 13h.01"></path>
+  </svg>
+</span>
+{% elif kind == 'camera' %}
+<span class="device-type-icon" title="Камера" aria-label="Камера">
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M4 8h11a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2z"></path>
+    <path d="m17 11 5-3v8l-5-3"></path>
+    <circle cx="9.5" cy="14.5" r="2.2"></circle>
+  </svg>
+</span>
+{% elif kind == 'printer' %}
+<span class="device-type-icon" title="МФУ" aria-label="МФУ">
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M6 8V4h12v4"></path>
+    <rect x="4" y="8" width="16" height="8" rx="1.5"></rect>
+    <path d="M6 16h12v4H6z"></path>
+    <path d="M7 12h.01"></path>
+  </svg>
+</span>
+{% else %}
+<span class="device-type-icon muted" title="Прочее" aria-label="Прочее">
+  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="9"></circle>
+    <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5"></path>
+    <circle cx="12" cy="17" r="0.6" fill="currentColor" stroke="none"></circle>
+  </svg>
+</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro device_portrait(device) -%}
+{% set kind = device.kind %}
+{% set status = device.last_status or 'unknown' %}
+<figure class="device-portrait {{ kind }} {{ status }}" aria-label="{{ device.kind_label }}">
+  {% if kind == 'notebook' %}
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-hidden="true">
+    <defs>
+      <linearGradient id="nb-body-{{ device.id }}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#edf3f6"/>
+        <stop offset="100%" stop-color="#c9d6df"/>
+      </linearGradient>
+      <linearGradient id="nb-screen-{{ device.id }}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#1f3a45"/>
+        <stop offset="100%" stop-color="#0f766e"/>
+      </linearGradient>
+    </defs>
+    <rect x="18" y="12" width="124" height="78" rx="8" fill="url(#nb-body-{{ device.id }})" stroke="#8aa0ae" stroke-width="2"/>
+    <rect x="28" y="22" width="104" height="58" rx="4" fill="url(#nb-screen-{{ device.id }})"/>
+    <rect x="8" y="90" width="144" height="12" rx="3" fill="#b7c5cf" stroke="#8aa0ae" stroke-width="1.5"/>
+    <rect x="68" y="93" width="24" height="4" rx="2" fill="#7f93a1"/>
+    <circle class="device-portrait-led" cx="132" cy="18" r="3.2"/>
+  </svg>
+  {% elif kind == 'desktop' %}
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-hidden="true">
+    <defs>
+      <linearGradient id="dt-case-{{ device.id }}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#f4f7f9"/>
+        <stop offset="100%" stop-color="#c5d2dc"/>
+      </linearGradient>
+      <linearGradient id="dt-panel-{{ device.id }}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#243640"/>
+        <stop offset="100%" stop-color="#0f766e"/>
+      </linearGradient>
+    </defs>
+    <rect x="42" y="8" width="76" height="104" rx="8" fill="url(#dt-case-{{ device.id }})" stroke="#8aa0ae" stroke-width="2"/>
+    <rect x="52" y="18" width="56" height="36" rx="4" fill="url(#dt-panel-{{ device.id }})"/>
+    <rect x="56" y="64" width="48" height="8" rx="2" fill="#9aadb9"/>
+    <rect x="56" y="78" width="48" height="8" rx="2" fill="#9aadb9"/>
+    <circle class="device-portrait-led" cx="80" cy="100" r="4"/>
+  </svg>
+  {% elif kind == 'vds' %}
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-hidden="true">
+    <defs>
+      <linearGradient id="vds-body-{{ device.id }}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#edf3f6"/>
+        <stop offset="100%" stop-color="#c9d6df"/>
+      </linearGradient>
+      <linearGradient id="vds-screen-{{ device.id }}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#1f3a45"/>
+        <stop offset="100%" stop-color="#0f766e"/>
+      </linearGradient>
+    </defs>
+    <rect x="18" y="14" width="124" height="72" rx="8" fill="url(#vds-body-{{ device.id }})" stroke="#8aa0ae" stroke-width="2"/>
+    <rect x="28" y="24" width="104" height="52" rx="4" fill="url(#vds-screen-{{ device.id }})"/>
+    <rect x="58" y="92" width="44" height="8" rx="2" fill="#b7c5cf" stroke="#8aa0ae" stroke-width="1.5"/>
+    <rect x="48" y="100" width="64" height="6" rx="2" fill="#9aadb9"/>
+    <path d="M118 18l22-10" fill="none" stroke="#0f766e" stroke-width="3" stroke-linecap="round"/>
+    <path d="M126 8h16v16" fill="none" stroke="#0f766e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle class="device-portrait-led" cx="132" cy="20" r="3.2"/>
+  </svg>
+  {% elif kind == 'server' %}
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-hidden="true">
+    <defs>
+      <linearGradient id="sv-case-{{ device.id }}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f4f7f9"/>
+        <stop offset="100%" stop-color="#c5d2dc"/>
+      </linearGradient>
+    </defs>
+    <rect x="22" y="12" width="116" height="42" rx="8" fill="url(#sv-case-{{ device.id }})" stroke="#8aa0ae" stroke-width="2"/>
+    <rect x="22" y="66" width="116" height="42" rx="8" fill="url(#sv-case-{{ device.id }})" stroke="#8aa0ae" stroke-width="2"/>
+    <rect x="36" y="24" width="70" height="8" rx="2" fill="#9aadb9"/>
+    <rect x="36" y="78" width="70" height="8" rx="2" fill="#9aadb9"/>
+    <circle class="device-portrait-led" cx="122" cy="33" r="4"/>
+    <circle class="device-portrait-led" cx="122" cy="87" r="4"/>
+  </svg>
+  {% elif kind == 'firewall' %}
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-hidden="true">
+    <defs>
+      <linearGradient id="fw-case-{{ device.id }}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#f4f7f9"/>
+        <stop offset="100%" stop-color="#c5d2dc"/>
+      </linearGradient>
+    </defs>
+    <path d="M80 10c18 8 36 10 52 10v28c0 28-20 44-52 54C48 92 28 76 28 48V20c16 0 34-2 52-10z" fill="url(#fw-case-{{ device.id }})" stroke="#8aa0ae" stroke-width="2"/>
+    <rect x="46" y="44" width="68" height="28" rx="6" fill="#243640"/>
+    <circle cx="62" cy="58" r="3.2" fill="#9aadb9"/>
+    <circle cx="80" cy="58" r="3.2" fill="#9aadb9"/>
+    <circle cx="98" cy="58" r="3.2" fill="#9aadb9"/>
+    <circle class="device-portrait-led" cx="114" cy="30" r="3.2"/>
+  </svg>
+  {% elif kind == 'router' %}
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-hidden="true">
+    <defs>
+      <linearGradient id="rt-case-{{ device.id }}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f4f7f9"/>
+        <stop offset="100%" stop-color="#c5d2dc"/>
+      </linearGradient>
+    </defs>
+    <rect x="24" y="42" width="112" height="52" rx="10" fill="url(#rt-case-{{ device.id }})" stroke="#8aa0ae" stroke-width="2"/>
+    <path d="M52 42V24" fill="none" stroke="#8aa0ae" stroke-width="3"/>
+    <path d="M108 42V24" fill="none" stroke="#8aa0ae" stroke-width="3"/>
+    <circle cx="52" cy="20" r="5" fill="#9aadb9"/>
+    <circle cx="108" cy="20" r="5" fill="#9aadb9"/>
+    <circle cx="52" cy="68" r="4" fill="#9aadb9"/>
+    <circle cx="80" cy="68" r="4" fill="#9aadb9"/>
+    <circle cx="108" cy="68" r="4" fill="#9aadb9"/>
+    <circle class="device-portrait-led" cx="124" cy="52" r="3.2"/>
+  </svg>
+  {% elif kind == 'camera' %}
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-hidden="true">
+    <defs>
+      <linearGradient id="cm-body-{{ device.id }}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#f4f7f9"/>
+        <stop offset="100%" stop-color="#c5d2dc"/>
+      </linearGradient>
+    </defs>
+    <rect x="18" y="32" width="88" height="58" rx="10" fill="url(#cm-body-{{ device.id }})" stroke="#8aa0ae" stroke-width="2"/>
+    <path d="M106 48l36-16v56l-36-16z" fill="#243640" stroke="#8aa0ae" stroke-width="2"/>
+    <circle cx="62" cy="61" r="16" fill="#1f3a45"/>
+    <circle cx="62" cy="61" r="8" fill="#0f766e"/>
+    <circle class="device-portrait-led" cx="96" cy="42" r="3.2"/>
+  </svg>
+  {% elif kind == 'printer' %}
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-hidden="true">
+    <defs>
+      <linearGradient id="pr-case-{{ device.id }}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#f4f7f9"/>
+        <stop offset="100%" stop-color="#c5d2dc"/>
+      </linearGradient>
+    </defs>
+    <rect x="44" y="10" width="72" height="28" rx="4" fill="#d9e4ea" stroke="#8aa0ae" stroke-width="2"/>
+    <rect x="22" y="38" width="116" height="48" rx="8" fill="url(#pr-case-{{ device.id }})" stroke="#8aa0ae" stroke-width="2"/>
+    <rect x="44" y="86" width="72" height="24" rx="4" fill="#edf3f6" stroke="#8aa0ae" stroke-width="2"/>
+    <circle class="device-portrait-led" cx="40" cy="62" r="4"/>
+  </svg>
+  {% else %}
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-hidden="true">
+    <defs>
+      <linearGradient id="ot-ring-{{ device.id }}" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#d9e4ea"/>
+        <stop offset="100%" stop-color="#a9bbc7"/>
+      </linearGradient>
+    </defs>
+    <circle cx="80" cy="58" r="42" fill="url(#ot-ring-{{ device.id }})" stroke="#8aa0ae" stroke-width="2"/>
+    <circle cx="80" cy="58" r="28" fill="#f7fafb" stroke="#b7c5cf" stroke-width="1.5"/>
+    <path d="M68 48c2.5-6 10-9 16-6 5 2.5 7 8 5 13-2 5-8 7-8 14" fill="none" stroke="#6d8291" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="80" cy="78" r="3.5" fill="#6d8291"/>
+    <circle class="device-portrait-led" cx="112" cy="30" r="3.2"/>
+  </svg>
+  {% endif %}
+  <figcaption class="device-portrait-caption">{{ device.kind_label }}</figcaption>
+</figure>
+{%- endmacro %}
+
+{% macro device_card(device, show_quick_ping=false) -%}
+<div class="device-card-shell">
+  <article class="device-card {{ device.last_status }}">
+    <div class="device-card-head">
+      <button
+        type="button"
+        class="device-select-hit"
+        data-device-select
+        aria-pressed="false"
+        aria-label="Выбрать устройство"
+        title="Выбрать"
+      >
+        <span class="device-select-box" aria-hidden="true"></span>
+      </button>
+      <span class="device-card-kind">
+        {{ device_type_icon(device.kind) }}
+        <span class="device-card-kind-label">{{ device_kind_short(device.kind) }}</span>
+      </span>
+      <span class="device-card-head-actions">
+        {% if show_quick_ping %}
+        <button
+          type="button"
+          class="device-ping-btn"
+          data-device-ping
+          aria-label="Ping — проверить доступность"
+          title="Ping"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="9"></circle>
+            <path d="M12 8v4l2.5 2.5"></path>
+          </svg>
+        </button>
+        {% endif %}
+        <button
+          type="button"
+          class="device-fav-btn"
+          data-device-fav
+          aria-pressed="false"
+          aria-label="В избранное"
+          title="Избранное"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+          </svg>
+        </button>
+        <span class="device-card-status" title="{{ device_status_short(device.last_status) }}">
+          {{ status_dot(device.last_status) }}
+          <span class="device-card-status-label" data-status-label>{{ device_status_short(device.last_status) }}</span>
+        </span>
+      </span>
+    </div>
+    <a
+      class="device-card-body text-decoration-none"
+      href="{{ url_for('devices.detail', device_id=device.id) }}"
+      data-device-link
+    >
+      <div class="device-card-name{% if not device.hostname %} is-empty{% endif %}" title="{{ device.hostname or 'имя не определено' }}">
+        {{ device.hostname or 'без имени' }}
+      </div>
+      <div class="device-card-ip font-monospace">{{ device.ip }}</div>
+      {% if device.serial_number or device.mac %}
+      <div class="device-card-meta font-monospace">
+        {% if device.serial_number %}<span title="Серийный номер">{{ device.serial_number }}</span>{% endif %}
+        {% if device.serial_number and device.mac %}<span class="device-card-meta-sep">·</span>{% endif %}
+        {% if device.mac %}<span title="MAC">{{ device.mac }}</span>{% endif %}
+      </div>
+      {% endif %}
+    </a>
+  </article>
+</div>
+{%- endmacro %}

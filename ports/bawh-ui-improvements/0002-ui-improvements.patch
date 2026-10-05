@@ -1,0 +1,875 @@
+diff --git a/app/routes/devices.py b/app/routes/devices.py
+index e38eeb4..95bdb09 100644
+--- a/app/routes/devices.py
++++ b/app/routes/devices.py
+@@ -22,6 +22,7 @@ from app.services.command_presets import list_command_presets
+ from app.services.device_kind import hostname_sort_key, kind_counts
+ from app.services.net_utils import sector_subnet_labels
+ from app.services.network_summary_service import get_network_summary
++from app.services.ping_service import ping_known_device
+ from app.services import script_service
+ from app.services import watchlist_service
+ from app.utils import parse_optional_int, utcnow
+@@ -216,6 +217,7 @@ def map():
+         search_query=query,
+         search_sector_id=sector_id,
+         map_scripts=map_scripts,
++        map_can_ping=user_can_run_diagnostics(current_user),
+     )
+ 
+ 
+@@ -226,6 +228,23 @@ def map_status():
+     return jsonify(map_status_payload())
+ 
+ 
++@bp.post("/api/devices/<int:device_id>/quick-ping")
++@login_required
++def quick_ping_device(device_id: int):
++    """Быстрый ping одного устройства: ICMP + запись device_history."""
++    if not user_can_run_diagnostics(current_user):
++        abort(403)
++    device = get_visible_device_or_404(device_id)
++    try:
++        payload = ping_known_device(device)
++    except ValueError as exc:
++        return jsonify({"error": str(exc)}), 400
++    except Exception:
++        db.session.rollback()
++        return jsonify({"error": "Не удалось выполнить ping."}), 500
++    return jsonify(payload)
++
++
+ @bp.post("/api/map/bulk/ping")
+ @login_required
+ def bulk_ping():
+@@ -422,6 +441,7 @@ def detail(device_id: int):
+         scripts=scripts,
+         watching=watching,
+         offline_minutes=offline_minutes,
++        can_run_diagnostics=user_can_run_diagnostics(current_user),
+     )
+ 
+ 
+diff --git a/app/services/ping_service.py b/app/services/ping_service.py
+index c4c7022..ad88946 100644
+--- a/app/services/ping_service.py
++++ b/app/services/ping_service.py
+@@ -712,6 +712,47 @@ def _combined(stdout: str | None, stderr: str | None) -> str:
+     return "\n".join(parts)
+ 
+ 
++def ping_known_device(device: Device) -> dict[str, object]:
++    """ICMP до известного устройства и запись в device_history.
++
++    Используется быстрым ping с карты/карточки: без script_runs, только инвентарь.
++    """
++    if not device or not (device.ip or "").strip():
++        raise ValueError("У устройства нет IP для ping.")
++
++    result = ping_host(device.ip)
++    now = utcnow()
++    previous = device.last_status
++    status = result.status
++    device.last_status = status
++    if status == DeviceStatus.ONLINE:
++        device.last_response_time_ms = result.response_time_ms
++        device.last_seen = now
++    else:
++        device.last_response_time_ms = None
++
++    db.session.add(
++        DeviceHistory(
++            device_id=device.id,
++            timestamp=now,
++            status=status,
++            response_time_ms=result.response_time_ms
++            if status == DeviceStatus.ONLINE
++            else None,
++        )
++    )
++    db.session.commit()
++
++    return {
++        "device_id": device.id,
++        "status": status,
++        "response_time_ms": result.response_time_ms,
++        "previous_status": previous,
++        "changed": previous != status,
++        "checked_at": now.isoformat(),
++    }
++
++
+ def _error_text(exc: subprocess.TimeoutExpired) -> str:
+     """Текст таймаута плюс кусок вывода, который ping успел напечатать."""
+     stdout = exc.stdout or ""
+diff --git a/app/static/css/app.css b/app/static/css/app.css
+index fdd8730..fc684c3 100644
+--- a/app/static/css/app.css
++++ b/app/static/css/app.css
+@@ -10,6 +10,9 @@
+   --ok: #15803d;
+   --bad: #b91c1c;
+   --warn: #b45309;
++  --entity-border: #ea580c;
++  --entity-bg: #fff7ed;
++  --entity-ink: #9a3412;
+   --shadow: 0 10px 30px rgba(24, 33, 43, 0.08);
+   --radius: 14px;
+   /* Offline-friendly: system stack first; Manrope optional if operator adds local fonts. */
+@@ -46,6 +49,29 @@ a:hover {
+   color: var(--accent);
+ }
+ 
++.bawh-entity-link {
++  display: inline-block;
++  padding: 0.12rem 0.5rem;
++  border: 1.5px solid var(--entity-border);
++  border-radius: 8px;
++  background: var(--entity-bg);
++  color: var(--entity-ink);
++  font-weight: 600;
++  text-decoration: none;
++  line-height: 1.35;
++  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
++}
++
++.bawh-entity-link:hover {
++  color: var(--entity-ink);
++  border-color: #c2410c;
++  background: #ffedd5;
++}
++
++.bawh-entity-link--account {
++  font-family: var(--mono);
++}
++
+ .font-monospace,
+ code {
+   font-family: var(--mono);
+@@ -451,10 +477,37 @@ code {
+   color: #6c757d;
+ }
+ 
++.map-refresh-controls {
++  display: flex;
++  flex-wrap: wrap;
++  align-items: center;
++  justify-content: flex-end;
++  gap: 0.55rem 0.75rem;
++  max-width: 28rem;
++}
++
++.map-refresh-toggle {
++  display: inline-flex;
++  align-items: center;
++  gap: 0.4rem;
++  margin: 0;
++  color: var(--ink);
++  font-size: 0.9rem;
++  cursor: pointer;
++  user-select: none;
++}
++
++.map-refresh-interval {
++  width: auto;
++  min-width: 6.5rem;
++}
++
+ .map-refresh-status {
+   margin: 0;
+   color: var(--muted);
+   font-size: 0.85rem;
++  flex: 1 1 100%;
++  text-align: right;
+ }
+ 
+ .map-toolbar {
+@@ -626,7 +679,8 @@ code {
+ }
+ 
+ .device-select-hit,
+-.device-fav-btn {
++.device-fav-btn,
++.device-ping-btn {
+   position: static;
+   z-index: auto;
+   display: inline-flex;
+@@ -666,6 +720,16 @@ code {
+   box-shadow: inset 0 0 0 1px #fff;
+ }
+ 
++.device-ping-btn:hover {
++  border-color: var(--accent);
++  color: var(--accent-ink);
++}
++
++.device-ping-btn.is-busy {
++  opacity: 0.55;
++  cursor: wait;
++}
++
+ .device-fav-btn:hover {
+   border-color: #e0b35a;
+   color: #b45309;
+@@ -697,6 +761,10 @@ code {
+   background: var(--accent-soft);
+ }
+ 
++[data-device-card].is-ping-changed .device-card {
++  box-shadow: 0 0 0 2px rgba(234, 88, 12, 0.35);
++}
++
+ /* Sticky bulk action bar */
+ .map-bulk-bar {
+   position: sticky;
+diff --git a/app/static/js/device_quick_ping.js b/app/static/js/device_quick_ping.js
+new file mode 100644
+index 0000000..5279606
+--- /dev/null
++++ b/app/static/js/device_quick_ping.js
+@@ -0,0 +1,54 @@
++(() => {
++  const buttons = document.querySelectorAll("[data-device-quick-ping]");
++  const meta = document.querySelector("[data-device-quick-ping-root]");
++  if (!buttons.length || !meta || !window.BawhHttp) return;
++
++  const { postJson } = window.BawhHttp;
++  const url = meta.dataset.quickPingUrl || "";
++  const csrf = meta.dataset.csrfToken || "";
++  const statusHost = document.querySelector("[data-device-live-status]");
++  if (!url) return;
++
++  async function runPing(button) {
++    button.disabled = true;
++    button.classList.add("is-busy");
++    try {
++      const payload = await postJson(url, {}, csrf);
++      if (statusHost && payload.status) {
++        statusHost.dataset.status = payload.status;
++        statusHost.textContent =
++          payload.status === "online"
++            ? "доступен"
++            : payload.status === "offline"
++              ? "недоступен"
++              : "неизвестно";
++        statusHost.classList.remove("text-bg-success", "text-bg-danger", "text-bg-secondary");
++        if (payload.status === "online") {
++          statusHost.classList.add("text-bg-success");
++        } else if (payload.status === "offline") {
++          statusHost.classList.add("text-bg-danger");
++        } else {
++          statusHost.classList.add("text-bg-secondary");
++        }
++      }
++      const panel = document.querySelector(".device-object.panel");
++      if (panel && payload.status) {
++        panel.classList.remove("online", "offline", "unknown");
++        panel.classList.add(payload.status);
++      }
++      button.title = payload.changed ? "Статус изменился" : "Статус без изменений";
++    } catch (err) {
++      button.title = err.message || "Ping не удался";
++    } finally {
++      button.disabled = false;
++      button.classList.remove("is-busy");
++    }
++  }
++
++  buttons.forEach((button) => {
++    button.addEventListener("click", (event) => {
++      event.preventDefault();
++      runPing(button);
++    });
++  });
++})();
+diff --git a/app/static/js/live_search.js b/app/static/js/live_search.js
+index ab78632..44ed24a 100644
+--- a/app/static/js/live_search.js
++++ b/app/static/js/live_search.js
+@@ -99,7 +99,11 @@
+         const title = linkOrText(item.url, item.title);
+         const device =
+           item.device_id && item.device_url
+-            ? linkOrText(item.device_url, item.device_label || "#" + item.device_id)
++            ? linkOrText(
++                item.device_url,
++                item.device_label || "#" + item.device_id,
++                "bawh-entity-link bawh-entity-link--device"
++              )
+             : "—";
+         return `<tr>${cell(escapeHtml(item.when || "—"))}${cell(
+           escapeHtml(item.kind_title || "")
+@@ -117,7 +121,11 @@
+     return items
+       .map((item) => {
+         return `<tr>${cell(
+-          linkOrText(item.url, item.account_key, "font-monospace")
++          linkOrText(
++            item.url,
++            item.account_key,
++            "bawh-entity-link bawh-entity-link--account font-monospace"
++          )
+         )}${cell(escapeHtml(item.display_name || "—"))}${cell(
+           escapeHtml(item.first_seen_at || "—")
+         )}${cell(escapeHtml(item.last_seen_at || "—"))}</tr>`;
+diff --git a/app/static/js/map.js b/app/static/js/map.js
+index 041dcaf..5aa2c40 100644
+--- a/app/static/js/map.js
++++ b/app/static/js/map.js
+@@ -3,7 +3,10 @@
+   const escapeHtml = http.escapeHtml || ((value) => String(value ?? ""));
+   const fetchJson = http.fetchJson;
+   const postJson = http.postJson;
+-  const REFRESH_MS = 15000;
++  const AUTO_REFRESH_KEY = "bawh.map.autoRefresh";
++  const REFRESH_INTERVAL_KEY = "bawh.map.refreshIntervalSec";
++  const DEFAULT_REFRESH_SEC = 60;
++  const VALID_REFRESH_SEC = new Set([30, 60, 120, 300, 600]);
+   const FAV_KEY = "bawh.map.favorites";
+   const STATUS_LABELS = {
+     online: "доступен",
+@@ -62,6 +65,8 @@
+   const filtersRoot = document.getElementById("map-filters");
+   const resetBtn = document.getElementById("map-filters-reset");
+   const refreshStatus = document.getElementById("map-refresh-status");
++  const autoRefreshInput = document.getElementById("map-auto-refresh");
++  const refreshIntervalSelect = document.getElementById("map-refresh-interval");
+   const filtersEmpty = document.getElementById("map-filters-empty");
+   const summaryRoot = document.getElementById("map-summary");
+   const summaryStatus = document.getElementById("map-summary-status");
+@@ -97,6 +102,120 @@
+   let mapLayout = "cards";
+   let sortMode = "hostname";
+   let restoringView = false;
++  let autoRefreshEnabled = loadAutoRefreshEnabled();
++  let refreshIntervalSec = loadRefreshIntervalSec();
++  /** @type {ReturnType<typeof setInterval> | null} */
++  let statusRefreshTimer = null;
++  /** @type {ReturnType<typeof setInterval> | null} */
++  let summaryRefreshTimer = null;
++  const canQuickPing = mapRoot.dataset.canQuickPing === "1";
++  const quickPingUrlTemplate = mapRoot.dataset.quickPingUrlTemplate || "";
++
++  function loadAutoRefreshEnabled() {
++    try {
++      const raw = localStorage.getItem(AUTO_REFRESH_KEY);
++      if (raw === "0") return false;
++      if (raw === "1") return true;
++    } catch (_err) {
++      /* ignore */
++    }
++    return true;
++  }
++
++  function loadRefreshIntervalSec() {
++    try {
++      const raw = localStorage.getItem(REFRESH_INTERVAL_KEY);
++      const parsed = Number(raw);
++      if (VALID_REFRESH_SEC.has(parsed)) {
++        return parsed;
++      }
++    } catch (_err) {
++      /* ignore */
++    }
++    return DEFAULT_REFRESH_SEC;
++  }
++
++  function formatRefreshIntervalLabel(seconds) {
++    if (seconds >= 60 && seconds % 60 === 0) {
++      const mins = seconds / 60;
++      return mins === 1 ? "1 мин" : `${mins} мин`;
++    }
++    return `${seconds} с`;
++  }
++
++  function syncRefreshControls() {
++    if (autoRefreshInput) {
++      autoRefreshInput.checked = autoRefreshEnabled;
++    }
++    if (refreshIntervalSelect) {
++      refreshIntervalSelect.value = String(refreshIntervalSec);
++      refreshIntervalSelect.disabled = !autoRefreshEnabled;
++    }
++    updateRefreshStatusHint();
++  }
++
++  function updateRefreshStatusHint() {
++    if (!refreshStatus) return;
++    if (!autoRefreshEnabled) {
++      refreshStatus.textContent = "Автообновление выключено";
++      return;
++    }
++    refreshStatus.textContent = `Автообновление: ${formatRefreshIntervalLabel(refreshIntervalSec)}`;
++  }
++
++  function stopRefreshTimers() {
++    if (statusRefreshTimer) {
++      clearInterval(statusRefreshTimer);
++      statusRefreshTimer = null;
++    }
++    if (summaryRefreshTimer) {
++      clearInterval(summaryRefreshTimer);
++      summaryRefreshTimer = null;
++    }
++  }
++
++  function startRefreshTimers() {
++    stopRefreshTimers();
++    if (!autoRefreshEnabled) {
++      return;
++    }
++    const ms = refreshIntervalSec * 1000;
++    statusRefreshTimer = window.setInterval(refreshStatuses, ms);
++    summaryRefreshTimer = window.setInterval(refreshSummary, ms * 2);
++  }
++
++  function persistRefreshPrefs() {
++    try {
++      localStorage.setItem(AUTO_REFRESH_KEY, autoRefreshEnabled ? "1" : "0");
++      localStorage.setItem(REFRESH_INTERVAL_KEY, String(refreshIntervalSec));
++    } catch (_err) {
++      /* ignore */
++    }
++  }
++
++  function setAutoRefresh(enabled) {
++    autoRefreshEnabled = Boolean(enabled);
++    persistRefreshPrefs();
++    syncRefreshControls();
++    startRefreshTimers();
++  }
++
++  function setRefreshIntervalSec(seconds) {
++    const parsed = Number(seconds);
++    refreshIntervalSec = VALID_REFRESH_SEC.has(parsed)
++      ? parsed
++      : DEFAULT_REFRESH_SEC;
++    persistRefreshPrefs();
++    syncRefreshControls();
++    startRefreshTimers();
++  }
++
++  function quickPingUrl(deviceId) {
++    if (!quickPingUrlTemplate) {
++      return `/api/devices/${deviceId}/quick-ping`;
++    }
++    return quickPingUrlTemplate.replace("/0/", `/${deviceId}/`);
++  }
+ 
+   function loadFavorites() {
+     try {
+@@ -881,6 +1000,15 @@
+         toggleFavorite(card);
+       });
+     }
++    const pingBtn = card.querySelector("[data-device-ping]");
++    if (pingBtn && !pingBtn.dataset.bound) {
++      pingBtn.dataset.bound = "1";
++      pingBtn.addEventListener("click", (event) => {
++        event.preventDefault();
++        event.stopPropagation();
++        runQuickPing(card);
++      });
++    }
+     syncFavoriteUi(card);
+     syncSelectUi(card);
+   }
+@@ -916,6 +1044,16 @@
+               <span class="device-card-kind-label">${escapeHtml(KIND_LABELS[kind] || KIND_LABELS.other)}</span>
+             </span>
+             <span class="device-card-head-actions">
++              ${
++                canQuickPing
++                  ? `<button type="button" class="device-ping-btn" data-device-ping aria-label="Ping — проверить доступность" title="Ping">
++                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
++                  <circle cx="12" cy="12" r="9"></circle>
++                  <path d="M12 8v4l2.5 2.5"></path>
++                </svg>
++              </button>`
++                  : ""
++              }
+               <button type="button" class="device-fav-btn" data-device-fav aria-pressed="false" aria-label="В избранное" title="Избранное">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+@@ -1038,9 +1176,12 @@
+             minute: "2-digit",
+             second: "2-digit",
+           });
+-      refreshStatus.textContent = time
+-        ? `Обновлено в ${time}`
+-        : "Статусы обновлены";
++      const suffix = time ? ` · обновлено в ${time}` : "";
++      if (autoRefreshEnabled) {
++        refreshStatus.textContent = `Автообновление: ${formatRefreshIntervalLabel(refreshIntervalSec)}${suffix}`;
++      } else if (time) {
++        refreshStatus.textContent = `Обновлено в ${time}`;
++      }
+     }
+   }
+ 
+@@ -1054,7 +1195,42 @@
+       applyStatusPayload(payload);
+     } catch (_err) {
+       if (refreshStatus) {
+-        refreshStatus.textContent = "Не удалось обновить статусы";
++        refreshStatus.textContent = autoRefreshEnabled
++          ? `Автообновление: ${formatRefreshIntervalLabel(refreshIntervalSec)} · ошибка запроса`
++          : "Не удалось обновить статусы";
++      }
++    }
++  }
++
++  async function runQuickPing(card) {
++    if (!canQuickPing || !card) return;
++    const deviceId = Number(card.dataset.deviceId);
++    if (!Number.isFinite(deviceId) || deviceId <= 0) return;
++    const btn = card.querySelector("[data-device-ping]");
++    if (btn) {
++      btn.disabled = true;
++      btn.classList.add("is-busy");
++    }
++    try {
++      const csrf = mapRoot.dataset.csrfToken || "";
++      const payload = await postJson(quickPingUrl(deviceId), {}, csrf);
++      const nextStatus = payload.status || "unknown";
++      card.dataset.status = nextStatus;
++      updateStatusChip(card, nextStatus);
++      applyFilters();
++      if (payload.changed) {
++        card.classList.add("is-ping-changed");
++        window.setTimeout(() => card.classList.remove("is-ping-changed"), 1800);
++      }
++      await refreshSummary();
++    } catch (err) {
++      if (btn) {
++        btn.title = err.message || "Ping не удался";
++      }
++    } finally {
++      if (btn) {
++        btn.disabled = false;
++        btn.classList.remove("is-busy");
+       }
+     }
+   }
+@@ -1152,7 +1328,20 @@
+   applyFilters();
+   syncUrlFromFilters();
+   updateBulkBar();
++  if (autoRefreshInput) {
++    autoRefreshInput.addEventListener("change", () => {
++      setAutoRefresh(autoRefreshInput.checked);
++    });
++  }
++  if (refreshIntervalSelect) {
++    refreshIntervalSelect.addEventListener("change", () => {
++      setRefreshIntervalSec(refreshIntervalSelect.value);
++    });
++  }
++
++  syncRefreshControls();
+   refreshSummary();
++  startRefreshTimers();
+   window.addEventListener("pageshow", (event) => {
+     if (event.persisted) {
+       sessionStorage.removeItem(RESTORE_KEY);
+@@ -1160,6 +1349,4 @@
+     }
+     restoreMapView();
+   });
+-  window.setInterval(refreshStatuses, REFRESH_MS);
+-  window.setInterval(refreshSummary, REFRESH_MS * 4);
+ })();
+diff --git a/app/templates/accounts/detail.html b/app/templates/accounts/detail.html
+index 538604a..6dc84ba 100644
+--- a/app/templates/accounts/detail.html
++++ b/app/templates/accounts/detail.html
+@@ -1,5 +1,6 @@
+ {% extends "base.html" %}
+ {% from "macros/status.html" import status_badge %}
++{% from "macros/entities.html" import device_entity_link %}
+ {% block title %}{{ account.account_key }}{% endblock %}
+ {% block body_class %}page-account-detail{% endblock %}
+ {% block main_class %}app-main-wide{% endblock %}
+@@ -58,7 +59,7 @@
+       {% for device in current_devices %}
+         <tr>
+           <td>
+-            <a href="{{ url_for('devices.detail', device_id=device.id) }}">{{ device.hostname or 'без имени' }}</a>
++            {{ device_entity_link(device) }}
+           </td>
+           <td class="font-monospace">{{ device.ip }}</td>
+           <td>{{ device.sector.name if device.sector else '—' }}</td>
+@@ -87,7 +88,7 @@
+           <td class="text-nowrap">{{ row.seen_at|dt }}</td>
+           <td>
+             {% if row.device %}
+-            <a href="{{ url_for('devices.detail', device_id=row.device.id) }}">{{ row.device.hostname or 'без имени' }}</a>
++            {{ device_entity_link(row.device) }}
+             {% else %}—{% endif %}
+           </td>
+           <td class="font-monospace">{{ row.device.ip if row.device else '—' }}</td>
+diff --git a/app/templates/accounts/list.html b/app/templates/accounts/list.html
+index aaede9a..cd4d96f 100644
+--- a/app/templates/accounts/list.html
++++ b/app/templates/accounts/list.html
+@@ -1,5 +1,6 @@
+ {% extends "base.html" %}
+ {% from "macros/pagination.html" import page_nav %}
++{% from "macros/entities.html" import account_entity_link %}
+ {% block title %}Учётные записи{% endblock %}
+ {% block main_class %}app-main-wide{% endblock %}
+ {% block content %}
+@@ -48,7 +49,7 @@
+       {% for account in accounts %}
+         <tr>
+           <td>
+-            <a class="font-monospace" href="{{ url_for('accounts.detail', account_id=account.id) }}">{{ account.account_key }}</a>
++            {{ account_entity_link(account) }}
+           </td>
+           <td>{{ account.display_name or '—' }}</td>
+           <td class="text-nowrap">{{ account.first_seen_at|dt }}</td>
+diff --git a/app/templates/actions/list.html b/app/templates/actions/list.html
+index 0f6d3e1..9c8b50b 100644
+--- a/app/templates/actions/list.html
++++ b/app/templates/actions/list.html
+@@ -1,5 +1,6 @@
+ {% extends "base.html" %}
+ {% from "macros/pagination.html" import page_nav %}
++{% from "macros/entities.html" import device_entity_link_by_id %}
+ {% block title %}Действия{% endblock %}
+ {% block main_class %}app-main-wide{% endblock %}
+ {% block content %}
+@@ -89,7 +90,7 @@
+           </td>
+           <td>
+             {% if item.device_id %}
+-            <a href="{{ url_for('devices.detail', device_id=item.device_id) }}">{{ item.device_label or ('#' ~ item.device_id) }}</a>
++            {{ device_entity_link_by_id(item.device_id, item.device_label or ('#' ~ item.device_id)) }}
+             {% else %}
+             —
+             {% endif %}
+diff --git a/app/templates/devices/_poll_actions.html b/app/templates/devices/_poll_actions.html
+index 12d2a34..5e88dcb 100644
+--- a/app/templates/devices/_poll_actions.html
++++ b/app/templates/devices/_poll_actions.html
+@@ -3,10 +3,7 @@
+   <div class="device-actions-group">
+     <p class="device-actions-label">С сервера приложения</p>
+     <div class="device-actions-row">
+-      <form method="post" action="{{ url_for('diagnostics.ping_device', device_id=device.id) }}">
+-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+-        <button class="btn btn-outline-primary w-100" type="submit">Ping</button>
+-      </form>
++      <button class="btn btn-outline-primary w-100" type="button" data-device-quick-ping>Ping</button>
+       <form method="post" action="{{ url_for('diagnostics.tracert_device', device_id=device.id) }}">
+         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+         <button class="btn btn-outline-primary w-100" type="submit">Трассировка</button>
+diff --git a/app/templates/devices/detail.html b/app/templates/devices/detail.html
+index 3711c1f..eea94d7 100644
+--- a/app/templates/devices/detail.html
++++ b/app/templates/devices/detail.html
+@@ -1,5 +1,6 @@
+ {% extends "base.html" %}
+ {% from "macros/status.html" import status_badge, device_portrait %}
++{% from "macros/entities.html" import account_entity_link %}
+ {% block title %}{% if device %}{{ device.hostname or device.ip }}{% else %}Устройство{% endif %}{% endblock %}
+ {% block main_class %}app-main-wide{% endblock %}
+ {% block content %}
+@@ -37,7 +38,12 @@
+             <p class="device-object-ip font-monospace">{{ device.ip }}</p>
+           </div>
+           <div class="device-object-status">
+-            {{ status_badge(device.last_status) }}
++            <span data-device-live-status data-status="{{ device.last_status }}" class="badge {% if device.last_status == 'online' %}text-bg-success{% elif device.last_status == 'offline' %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
++              {% if device.last_status == 'online' %}доступен{% elif device.last_status == 'offline' %}недоступен{% else %}неизвестно{% endif %}
++            </span>
++            {% if can_run_diagnostics|default(false) %}
++            <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-device-quick-ping title="Ping с сервера">Ping</button>
++            {% endif %}
+           </div>
+         </div>
+         <div class="device-watch-bar">
+@@ -76,7 +82,7 @@
+             <dt>Текущая УЗ</dt>
+             <dd>
+               {% if device.current_account %}
+-              <a class="font-monospace" href="{{ url_for('accounts.detail', account_id=device.current_account.id) }}">{{ device.current_account.account_key }}</a>
++              {{ account_entity_link(device.current_account) }}
+               {% else %}
+               —
+               {% endif %}
+@@ -108,7 +114,7 @@
+       <p class="panel-hint mb-3">УЗ по последнему успешному WMI-опросу</p>
+       {% if device.current_account %}
+       <p class="mb-1">
+-        <a class="font-monospace fs-5" href="{{ url_for('accounts.detail', account_id=device.current_account.id) }}">{{ device.current_account.account_key }}</a>
++        {{ account_entity_link(device.current_account, extra_class='fs-5') }}
+       </p>
+       {% if device.current_account.display_name %}
+       <p class="text-muted mb-1">{{ device.current_account.display_name }}</p>
+@@ -138,7 +144,7 @@
+               <td class="text-nowrap">{{ row.seen_at|dt }}</td>
+               <td>
+                 {% if row.account %}
+-                <a class="font-monospace" href="{{ url_for('accounts.detail', account_id=row.account.id) }}">{{ row.account.account_key }}</a>
++                {{ account_entity_link(row.account) }}
+                 {% else %}—{% endif %}
+               </td>
+               <td class="font-monospace">{{ row.raw_value or '—' }}</td>
+@@ -243,6 +249,15 @@
+ {% endblock %}
+ 
+ {% block scripts %}
++{% if can_run_diagnostics|default(false) %}
++<div
++  class="d-none"
++  data-device-quick-ping-root
++  data-quick-ping-url="{{ url_for('devices.quick_ping_device', device_id=device.id) }}"
++  data-csrf-token="{{ csrf_token() }}"
++></div>
++<script src="{{ url_for('static', filename='js/device_quick_ping.js') }}"></script>
++{% endif %}
+ <script>
+ (() => {
+   const VIEW_KEY = "bawh.map.view";
+diff --git a/app/templates/devices/map.html b/app/templates/devices/map.html
+index 1c5edcd..74c721c 100644
+--- a/app/templates/devices/map.html
++++ b/app/templates/devices/map.html
+@@ -9,7 +9,21 @@
+     <p class="page-subtitle">Секторы и машины вашей сети</p>
+   </div>
+   {% if sectors %}
+-  <p class="map-refresh-status" id="map-refresh-status">Автообновление каждые 15 с</p>
++  <div class="map-refresh-controls" id="map-refresh-controls" aria-label="Автообновление карты">
++    <label class="map-refresh-toggle">
++      <input type="checkbox" id="map-auto-refresh" checked>
++      <span>Автообновление</span>
++    </label>
++    <label class="visually-hidden" for="map-refresh-interval">Интервал</label>
++    <select class="form-select form-select-sm map-refresh-interval" id="map-refresh-interval" aria-label="Интервал автообновления">
++      <option value="30">30 с</option>
++      <option value="60" selected>1 мин</option>
++      <option value="120">2 мин</option>
++      <option value="300">5 мин</option>
++      <option value="600">10 мин</option>
++    </select>
++    <p class="map-refresh-status mb-0" id="map-refresh-status">Автообновление: 1 мин</p>
++  </div>
+   {% endif %}
+ </div>
+ 
+@@ -139,6 +153,8 @@
+       data-bulk-ping-url="{{ url_for('devices.bulk_ping') }}"
+       data-bulk-script-url="{{ url_for('devices.bulk_script') }}"
+       data-can-run-scripts="{{ '1' if can_run_scripts else '0' }}"
++      data-can-quick-ping="{{ '1' if map_can_ping|default(false) else '0' }}"
++      data-quick-ping-url-template="{{ url_for('devices.quick_ping_device', device_id=0) }}"
+       data-scripts-json='{{ map_scripts|default([])|tojson }}'
+     >
+       {% for sector in sectors %}
+@@ -193,7 +209,7 @@
+                 data-ip="{{ device.ip }}"
+                 data-mac="{{ device.mac or '' }}"
+                 data-serial="{{ device.serial_number or '' }}"
+-              >{{ device_card(device) }}</div>
++              >{{ device_card(device, show_quick_ping=map_can_ping|default(false)) }}</div>
+               {% endfor %}
+             </div>
+             <p class="text-muted small mb-0 px-1 py-2{% if sector.visible_devices %} d-none{% endif %}" data-sector-empty>Устройств пока нет. Они появятся после опроса.</p>
+diff --git a/app/templates/macros/entities.html b/app/templates/macros/entities.html
+new file mode 100644
+index 0000000..8d34465
+--- /dev/null
++++ b/app/templates/macros/entities.html
+@@ -0,0 +1,20 @@
++{% macro device_entity_link(device, label=None, extra_class='') -%}
++<a
++  class="bawh-entity-link bawh-entity-link--device{% if extra_class %} {{ extra_class }}{% endif %}"
++  href="{{ url_for('devices.detail', device_id=device.id) }}"
++>{{ label if label is not none else (device.hostname or 'без имени') }}</a>
++{%- endmacro %}
++
++{% macro account_entity_link(account, label=None, extra_class='') -%}
++<a
++  class="bawh-entity-link bawh-entity-link--account font-monospace{% if extra_class %} {{ extra_class }}{% endif %}"
++  href="{{ url_for('accounts.detail', account_id=account.id) }}"
++>{{ label if label is not none else account.account_key }}</a>
++{%- endmacro %}
++
++{% macro device_entity_link_by_id(device_id, label, extra_class='') -%}
++<a
++  class="bawh-entity-link bawh-entity-link--device{% if extra_class %} {{ extra_class }}{% endif %}"
++  href="{{ url_for('devices.detail', device_id=device_id) }}"
++>{{ label }}</a>
++{%- endmacro %}
+diff --git a/app/templates/macros/status.html b/app/templates/macros/status.html
+index f8846ac..4e241b3 100644
+--- a/app/templates/macros/status.html
++++ b/app/templates/macros/status.html
+@@ -280,7 +280,7 @@
+ </figure>
+ {%- endmacro %}
+ 
+-{% macro device_card(device) -%}
++{% macro device_card(device, show_quick_ping=false) -%}
+ <div class="device-card-shell">
+   <article class="device-card {{ device.last_status }}">
+     <div class="device-card-head">
+@@ -299,6 +299,20 @@
+         <span class="device-card-kind-label">{{ device_kind_short(device.kind) }}</span>
+       </span>
+       <span class="device-card-head-actions">
++        {% if show_quick_ping %}
++        <button
++          type="button"
++          class="device-ping-btn"
++          data-device-ping
++          aria-label="Ping — проверить доступность"
++          title="Ping"
++        >
++          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
++            <circle cx="12" cy="12" r="9"></circle>
++            <path d="M12 8v4l2.5 2.5"></path>
++          </svg>
++        </button>
++        {% endif %}
+         <button
+           type="button"
+           class="device-fav-btn"
+diff --git a/app/templates/scripts/run.html b/app/templates/scripts/run.html
+index 23d54d9..fbeef6e 100644
+--- a/app/templates/scripts/run.html
++++ b/app/templates/scripts/run.html
+@@ -9,7 +9,7 @@
+ <div class="page-header">
+   <div>
+     {% if run.device %}
+-    <p class="mb-1"><a class="btn btn-outline-primary btn-sm" href="{{ url_for('devices.detail', device_id=run.device.id) }}">Вернуться к компьютеру</a></p>
++    <p class="mb-1"><a class="bawh-entity-link bawh-entity-link--device" href="{{ url_for('devices.detail', device_id=run.device.id) }}">{{ run.device.hostname or run.device.ip or 'Устройство' }}</a></p>
+     {% endif %}
+     <h1 class="page-title">{{ pc_name }} — {{ started_label }}</h1>
+     <p class="page-subtitle">{{ run_type_label }}{% if run.script %} · {{ run.script.name }}{% endif %}</p>
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index d4076d4..6e259af 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -338,6 +338,7 @@ Seed коды действий: `poll`, `ping`, `tracert`, `command`, `script`,
+ | --- | --- | --- |
+ | GET | `/` | Карта сети |
+ | GET | `/map/status` | JSON статуса карты |
++| POST | `/api/devices/<id>/quick-ping` | Быстрый ping одного устройства → `device_history` (diagnostics) |
+ | POST | `/api/map/bulk/ping` | Bulk ping (нужны права diagnostics) |
+ | POST | `/api/map/bulk/script` | Bulk script (operator + published) |
+ | GET | `/api/batches/<batch_id>` | Статус batch |
+@@ -609,7 +610,9 @@ backup → git → pip → `flask init-db` → опциональный restart
+ | --- | --- |
+ | `static/css/app.css` | Стили |
+ | `static/js/http.js` | общий fetch/CSRF helper |
+-| `static/js/map.js` | карта сети |
++| `static/js/map.js` | карта сети (автообновление с тумблером/интервалом, quick ping на карточках) |
++| `static/js/device_quick_ping.js` | quick ping на карточке устройства |
++| `templates/macros/entities.html` | единые ссылки на устройства и УЗ (`.bawh-entity-link`, не на карте) |
+ | `static/js/search.js` | живой фильтр карты (без suggest-dropdown) |
+ | `static/js/live_search.js` | живой поиск списков Действия / Учётные записи |
+ | `static/js/batch.js` | bulk операции |
