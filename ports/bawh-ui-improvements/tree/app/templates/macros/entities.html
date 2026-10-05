@@ -1,0 +1,20 @@
+{% macro device_entity_link(device, label=None, extra_class='') -%}
+<a
+  class="bawh-entity-link bawh-entity-link--device{% if extra_class %} {{ extra_class }}{% endif %}"
+  href="{{ url_for('devices.detail', device_id=device.id) }}"
+>{{ label if label is not none else (device.hostname or 'без имени') }}</a>
+{%- endmacro %}
+
+{% macro account_entity_link(account, label=None, extra_class='') -%}
+<a
+  class="bawh-entity-link bawh-entity-link--account font-monospace{% if extra_class %} {{ extra_class }}{% endif %}"
+  href="{{ url_for('accounts.detail', account_id=account.id) }}"
+>{{ label if label is not none else account.account_key }}</a>
+{%- endmacro %}
+
+{% macro device_entity_link_by_id(device_id, label, extra_class='') -%}
+<a
+  class="bawh-entity-link bawh-entity-link--device{% if extra_class %} {{ extra_class }}{% endif %}"
+  href="{{ url_for('devices.detail', device_id=device_id) }}"
+>{{ label }}</a>
+{%- endmacro %}
